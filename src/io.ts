@@ -39,8 +39,8 @@ export async function readHistoryFile(path: string): Promise<string> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error('History path must refer to a regular file.');
-    if (stat.size > MAX_HISTORY_BYTES) throw new Error('History exceeds the 64 MiB size limit.');
+    if (!stat.isFile()) throw new Error('history path must refer to a regular file');
+    if (stat.size > MAX_HISTORY_BYTES) throw new Error('history exceeds the 64 MiB size limit');
     const chunks: Buffer[] = [];
     let total = 0;
     for (;;) {
@@ -48,7 +48,7 @@ export async function readHistoryFile(path: string): Promise<string> {
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
       if (bytesRead === 0) break;
       total += bytesRead;
-      if (total > MAX_HISTORY_BYTES) throw new Error('History exceeds the 64 MiB size limit.');
+      if (total > MAX_HISTORY_BYTES) throw new Error('history exceeds the 64 MiB size limit');
       chunks.push(buffer.subarray(0, bytesRead));
     }
     return Buffer.concat(chunks).toString('utf8');
@@ -101,7 +101,5 @@ export async function loadHistory(
       throw error;
     }
   }
-  throw new Error(
-    'No shell history found. Use --history PATH --shell bash|zsh|fish, or try --demo.',
-  );
+  throw new Error('no shell history found; use --history PATH --shell bash|zsh|fish');
 }

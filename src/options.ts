@@ -25,13 +25,19 @@ const optionsSchema = z
     top: positiveInteger.prefault('10'),
     since: utcDate.optional(),
     json: z.boolean().default(false),
+    csv: z.boolean().default(false),
+    view: z.enum(['tools', 'calendar', 'weekdays']).default('tools'),
+    output: z.string().min(1).optional(),
     ascii: z.boolean().default(false),
     'no-color': z.boolean().default(false),
     demo: z.boolean().default(false),
   })
   .strict()
-  .refine((options) => !(options.json && options.interactive), {
-    message: '--json and --interactive cannot be combined',
+  .refine((options) => !(options.json && options.csv), {
+    message: '--json and --csv cannot be combined',
+  })
+  .refine((options) => !(options.interactive && (options.json || options.csv || options.output)), {
+    message: '--interactive cannot be combined with --json, --csv, or --output',
   })
   .refine((options) => !(options.demo && options.history !== undefined), {
     message: '--demo and --history cannot be combined',
@@ -59,6 +65,9 @@ export function parseOptions(args: readonly string[]): Command {
       top: { type: 'string', short: 'n' },
       since: { type: 'string' },
       json: { type: 'boolean' },
+      csv: { type: 'boolean' },
+      view: { type: 'string' },
+      output: { type: 'string', short: 'o' },
       ascii: { type: 'boolean' },
       'no-color': { type: 'boolean' },
       demo: { type: 'boolean' },
@@ -78,21 +87,24 @@ export function parseOptions(args: readonly string[]): Command {
   return { kind: 'analyze', options: parsed.data };
 }
 
-export const HELP = `cliscope — a clearer picture of your command line
+export const HELP = `cliscope - report shell command usage
 
 Usage: cliscope [options]
 
-Prints a usage chart from local shell history. Commands are never executed.
+Read local shell history and write usage statistics to standard output.
 
-  -i, --interactive     Open the interactive OpenTUI dashboard
-  -f, --history PATH    Read a specific history file
-  -s, --shell SHELL     History format: auto, bash, zsh, fish (default: auto)
-  -n, --top NUMBER      Show 1–100 tools (default: 10)
-      --since DATE     Include dated entries on/after YYYY-MM-DD (UTC)
+  -i, --interactive     Display an interactive report
+  -f, --history PATH    Read history from PATH
+  -s, --shell SHELL     Select auto, bash, zsh, or fish format (default: auto)
+  -n, --top NUMBER      Print up to NUMBER tools (1–100; default: 10)
+      --since DATE     Include entries on or after DATE (YYYY-MM-DD, UTC)
       --json           Print the complete report as JSON
+      --csv            Print the selected view as CSV
+      --view VIEW      Select tools, calendar, or weekdays (default: tools)
+  -o, --output PATH    Create an output file; fail if it already exists
       --ascii          Draw graphs with ASCII characters
       --no-color       Disable ANSI colors (also respects NO_COLOR)
-      --demo           Explore a built-in synthetic history
+      --demo           Use sample history
   -h, --help           Show this help
   -v, --version        Show the version
 
@@ -101,8 +113,13 @@ Examples:
   cliscope -i
   cliscope --history ~/.zsh_history --top 15
   cliscope --since 2026-09-01 --json
+  cliscope --view weekdays --csv > weekdays.csv
+  cliscope --view calendar
   cliscope --demo -i
 
-Auto-discovery uses HISTFILE, then the active shell's standard history path.
-With --since, undated entries are excluded. JSON includes all tools.
+Without --history, read HISTFILE or the shell's standard history file.
+With --since, undated entries are excluded. JSON includes all views.
+CSV includes every row in the selected view; --top affects text output only.
+Use --output - to write to standard output.
+Exit status: 0 on success, 1 on error.
 `;

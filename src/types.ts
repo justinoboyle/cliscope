@@ -1,5 +1,6 @@
 /** History is data: commands are never evaluated or executed. */
 export type Shell = 'bash' | 'zsh' | 'fish';
+export type View = 'tools' | 'calendar' | 'weekdays';
 
 export interface HistoryEntry {
   readonly command: string;

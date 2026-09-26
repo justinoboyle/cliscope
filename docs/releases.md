@@ -1,83 +1,121 @@
 # Releases
 
-Cliscope uses stable [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
-CLI flags and JSON output are public interfaces. Fixes increment patch, compatible
-features increment minor, and incompatible public changes increment major. Before
-1.0, incompatible changes increment minor and are explicitly documented.
+Push an annotated release tag to run checks, build binaries, and publish to npm
+and GitHub Releases. Merging a pull request runs CI without publishing. The tag
+selects both the source commit and the workflow version.
 
-The release workflow accepts annotated tags named exactly `vMAJOR.MINOR.PATCH`,
-with no leading zeroes or prerelease suffix. The tag must match `package.json` and
-point to a commit reachable from `main`. Both squash and merge-commit histories
-work because validation uses ancestry, not a particular merge strategy.
+## Versions and tags
+
+| Name            | Example                   | Use                                                                                                         |
+| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Package version | `0.2.0`                   | Identifies the npm package and `cliscope --version` output. Both package manifests must match.              |
+| Git tag         | `v0.2.0`                  | Identifies a source commit. Never move or replace a published release tag.                                  |
+| npm dist-tag    | `latest` → `0.2.0`        | Selects the version installed by `npm install --global cliscope`. It moves when a new release is published. |
+| GitHub Release  | Release page for `v0.2.0` | Holds notes, binary archives, and checksums for the Git tag.                                                |
+
+`npm install --global cliscope@0.2.0` selects an exact version. Moving `latest`
+does not change that version or its Git tag. See [npm dist-tags](https://docs.npmjs.com/adding-dist-tags-to-packages/).
+
+Use [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`. After 1.0,
+increment patch for fixes, minor for compatible features, and major for
+incompatible CLI or JSON changes. During 0.x development, use patch for fixes
+and minor for features or breaking changes. Document any migration required.
+
+Release tags must match `vMAJOR.MINOR.PATCH`, without leading zeroes. Prerelease
+suffixes such as `-beta.1` are not supported by this workflow.
 
 ## Prepare and publish
 
-1. Start a release branch from current `main`.
-2. Choose the next version and run `npm version 0.2.0 --no-git-tag-version`
-   (substitute the chosen version). Commit both package manifests and update
-   `CHANGELOG.md` with the release date and notable changes.
-3. Run `npm run check`, `npm test`, `npm run build`, and `npm run build:binary`.
-   Open a pull request and wait for **Quality gate** before merging.
-4. Fetch the merged `main` and create an annotated tag on that commit:
+Substitute the next unpublished version for `0.2.0` below.
+
+1. Create a branch and update the version:
 
    ```sh
    git switch main
    git pull --ff-only origin main
-   git tag -a v0.2.0 -m 'Release v0.2.0'
+   git switch -c release/0.2.0
+   npm version 0.2.0 --no-git-tag-version
+   ```
+
+   This updates `package.json` and `package-lock.json` without creating a commit
+   or tag. Update `CHANGELOG.md` and commit all three files.
+
+2. Run `npm run verify`, push the branch, and open a pull request. Wait for
+   **Quality gate**, then merge. Squash merges and merge commits are supported.
+
+3. Tag the merged commit:
+
+   ```sh
+   git switch main
+   git pull --ff-only origin main
+   node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version'
+   git tag -a v0.2.0 -m 'Release v0.2.0' HEAD
    git push origin v0.2.0
    ```
 
-Pushing the tag automatically validates the release and reruns all checks. Native
-GitHub runners build and smoke-test standalone binaries for Linux x64/arm64,
-macOS x64/arm64, and Windows x64. After every build succeeds, the workflow publishes
-a GitHub Release with `.tar.gz` archives and `SHA256SUMS`. A private repository's
-release remains private and requires repository access to download.
+   Check the printed version before creating the tag. Use `git tag -s` instead
+   of `-a` if Git signing is configured. Lightweight tags are rejected.
 
-Each archive contains the executable, README, and MIT license. Linux binaries
-target glibc; Alpine/musl is not included. The binary embeds the Bun runtime and
-OpenTUI assets. Build configuration follows the official
-[Bun executable documentation](https://bun.sh/docs/bundler/executables) and
-[OpenTUI standalone guide](https://opentui.com/docs/reference/standalone-executables/).
-Application startup does not automatically load local `.env` or `bunfig.toml`.
+The **Release** workflow checks that the annotated tag matches both manifests
+and points to a commit reachable from `main`. It runs the native build and
+installed-package test matrices before publishing. Two jobs then publish in
+parallel: one uploads GitHub binary archives and `SHA256SUMS`; the other publishes
+the npm package and moves `latest` to that version. npm receives the same tarball
+installed by the consumer test matrix; the publish job does not rebuild it.
 
-## Verify and install
+Check publication with `npm view cliscope version` and `npm dist-tag ls cliscope`.
+The npm package is public. GitHub release downloads require repository access.
 
-Download the archive for your platform and `SHA256SUMS` from GitHub Releases, then
-verify the archive's SHA-256 checksum against its entry. On Linux:
+## Configure npm trust once
+
+Use npm 11.19 or later and run as an authenticated npm package maintainer:
+
+```sh
+npm trust github cliscope --file release.yml --repo justinoboyle/cliscope --allow-publish
+```
+
+Complete npm's authentication prompt. The configuration must name repository
+`justinoboyle/cliscope`, workflow `release.yml`, no environment, and permission
+for direct `npm publish`. The workflow filename excludes `.github/workflows/`.
+Staging-only permission does not allow this workflow to publish.
+
+The npm job has `id-token: write` and uses OIDC authentication without an
+`NPM_TOKEN` secret. Saving the trust configuration does not validate it; a
+workflow publication does. See [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/)
+and [trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+Provenance attestations are unavailable for private source repositories. The
+publish command uses `--provenance=false`.
+
+## Install a binary
+
+Download the archive for your OS and CPU, plus `SHA256SUMS`, from GitHub Releases.
+Each archive contains the executable, README, license, and third-party notices. Linux builds require
+glibc; Alpine/musl is not included. The executable includes Bun and OpenTUI assets.
+See the [Bun build reference](https://bun.sh/docs/bundler/executables) and
+[OpenTUI packaging reference](https://opentui.com/docs/reference/standalone-executables/).
+
+On Linux:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
 tar -xzf cliscope-linux-x64.tar.gz
 ./cliscope --version
+mkdir -p ~/.local/bin
 install -m 755 cliscope ~/.local/bin/cliscope
 ```
 
-Create `~/.local/bin` first if needed and ensure it is on `PATH`. On macOS use
-`shasum -a 256` and compare against `SHA256SUMS`. On Windows use PowerShell
-`Get-FileHash -Algorithm SHA256`, extract with `tar -xzf`, and place `cliscope.exe`
-in a directory on `PATH`.
+Add `~/.local/bin` to `PATH` if needed. On macOS, compare `shasum -a 256` output
+with `SHA256SUMS`. On Windows, use `Get-FileHash -Algorithm SHA256`, extract with
+`tar -xzf`, and put `cliscope.exe` on `PATH`.
 
-## Failed releases and policy
+## Recover from a failure
 
-If checks or packaging fail, fix the cause and rerun the failed workflow when the
-tagged source is still correct. If source changes are required, prepare a new
-patch version; never move an existing published tag. A failed publishing step may
-leave a release behind: inspect it before rerunning, and avoid replacing assets
-of a published version silently.
+Inspect the failed job. For a network or npm trust failure, correct the external
+configuration and select **Re-run failed jobs**. Inspect both npm and GitHub
+first: one publish job can succeed while the other fails. npm versions cannot
+be overwritten.
 
-Protect `main` with the **Quality gate** required status and disable force pushes
-where the GitHub plan supports repository rules. Restrict creation and deletion
-of `v*` tags to maintainers. CI actions are pinned by commit hash and release write
-permission is limited to the publishing job.
-
-The release workflow publishes GitHub binaries only. For the first npm release,
-an authenticated maintainer runs `npm publish --access public` from the validated
-release checkout. `prepack` reruns quality checks and produces the JavaScript
-package. A private GitHub repository does not make a public npm package private;
-publish to npm only when public distribution is intended.
-
-For future automation, configure an npm trusted publisher scoped to this GitHub
-repository and a dedicated publish workflow. Grant that job `id-token: write`,
-use a supported npm CLI, and publish the validated tag with provenance. Do not
-store a long-lived npm token in this repository. Until this is configured, npm
-publishing remains an explicit maintainer operation.
+If the source or workflow needs a fix, merge it with a new version and create a
+new tag. Rerunning an old tag uses its original workflow, including `v0.1.0`,
+which predates npm automation. Never move a published tag to include a fix.

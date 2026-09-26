@@ -54,6 +54,14 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:binary
+      - name: Save performance measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-${{ matrix.target }}
+          path: artifacts/performance*.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Smoke-test standalone executable
         run: |
           ./artifacts/${{ matrix.executable }} --version
@@ -69,7 +77,11 @@ jobs:
       - name: Package standalone executable
         run: |
           cp LICENSE README.md artifacts/
-          tar -czf artifacts/cliscope-${{ matrix.target }}.tar.gz -C artifacts ${{ matrix.executable }} LICENSE README.md
+          cp dist/THIRD_PARTY_NOTICES.txt artifacts/
+          tar -czf artifacts/cliscope-${{ matrix.target }}.tar.gz -C artifacts ${{ matrix.executable }} LICENSE README.md THIRD_PARTY_NOTICES.txt
+      - name: Test standalone terminal interaction
+        if: runner.os != 'Windows'
+        run: python3 scripts/test-terminal.py ./artifacts/${{ matrix.executable }} --demo -i
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cliscope-${{ matrix.target }}
@@ -77,13 +89,75 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  package:
+    name: Pack npm distribution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26.9.0'
+          cache: npm
+      - run: npm ci
+      - run: npm pack --pack-destination "${{ runner.temp }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/cliscope-*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  package-smoke:
+    name: Install package (Node ${{ matrix.node }}, ${{ matrix.runner }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.13.1', '22', '24', '26']
+        runner: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/package-archive
+      - name: Install outside the checkout without lifecycle scripts
+        run: |
+          mkdir -p "$RUNNER_TEMP/package-install"
+          npm install --prefix "$RUNNER_TEMP/package-install" --engine-strict --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/package-archive/cliscope-*.tgz
+      - name: Test installed package on consumer Node
+        run: node scripts/smoke-package.mjs "$RUNNER_TEMP/package-install"
+      - name: Test npm executable resolution
+        working-directory: ${{ runner.temp }}/package-install
+        run: npm exec --no -- cliscope --demo --ascii --no-color
+      - name: Test installed terminal interaction
+        if: runner.os != 'Windows'
+        run: |
+          launcher=$(node -p "require('node:path').join(process.env.RUNNER_TEMP, 'package-install/node_modules/cliscope', require(require('node:path').join(process.env.RUNNER_TEMP, 'package-install/node_modules/cliscope/package.json')).bin.cliscope)")
+          python3 scripts/test-terminal.py node "$launcher" --demo -i
+
   quality-gate:
     name: Quality gate
-    needs: verify
+    needs: [verify, package-smoke]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Require every platform to pass
         env:
           RESULT: ${{ needs.verify.result }}
-        run: test "$RESULT" = success
+          PACKAGE_RESULT: ${{ needs.package-smoke.result }}
+        run: test "$RESULT" = success && test "$PACKAGE_RESULT" = success

@@ -36,6 +36,8 @@ const options: RenderOptions = {
 
 await test('reports invocation counts, global shares, coverage, and history entries distinctly', () => {
   const output = renderReport(report, { ...options, limit: 1 });
+  assert.ok(output.startsWith('12 invocations'));
+  assert.doesNotMatch(output, /YOUR TERMINAL|Explore with|No telemetry/u);
   assert.match(output, /12 invocations.*2 tools.*10 history entries/u);
   assert.match(output, /git.*9.*75\.0%/u);
   assert.match(output, /Shown: 75\.0%/u);
@@ -44,12 +46,12 @@ await test('reports invocation counts, global shares, coverage, and history entr
 
 await test('activity uses UTC calendar days and fills missing dates with zero', () => {
   assert.deepEqual(activityLines(report, 80, false), [
-    'DAILY ACTIVITY / UTC / 3 days',
+    'Daily activity (UTC, 3 days)',
     '▂·█',
     '2026-09-24 - 2026-09-26  |  peak 8 invocations/day',
   ]);
   assert.deepEqual(activityLines(report, 2, true), [
-    'DAILY ACTIVITY / UTC / 2 days',
+    'Daily activity (UTC, 2 days)',
     '.8',
     '2026-09-25 - 2026-09-26  |  peak 8 invocations/day',
   ]);
@@ -60,7 +62,7 @@ await test('empty history gives an actionable empty state without invalid number
     { ...report, totalEntries: 0, totalInvocations: 0, uniqueTools: 0, tools: [], days: [] },
     options,
   );
-  assert.match(output, /No CLI tools found/u);
+  assert.match(output, /No tools found/u);
   assert.match(output, /--history PATH/u);
   assert.match(output, /no timestamps/u);
   assert.doesNotMatch(output, /NaN|Infinity/u);

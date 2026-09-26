@@ -34,6 +34,11 @@ await test('invalid flags, values, dates and conflicting modes fail at the bound
     ['--since', 'yesterday'],
     ['--since', '2026-1-1'],
     ['--json', '-i'],
+    ['--csv', '--json'],
+    ['--csv', '-i'],
+    ['--view', 'unknown'],
+    ['--output', 'report.csv', '-i'],
+    ['--output', ''],
     ['--demo', '--history', '/tmp/history'],
   ])
     assert.throws(() => parseOptions(args));
