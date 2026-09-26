@@ -51,6 +51,8 @@ function backtickEnd(command: string, start: number): number {
 
 /** A local cursor owns all mutable lexical state; no input is ever evaluated. */
 class ShellLexer {
+  // Consume ordinary unquoted text in runs; shell syntax stays on the full reader.
+  private readonly plain = /[\w./:=+-]+/y;
   private readonly command: string;
   private readonly tokens: Token[] = [];
   private index = 0;
@@ -66,11 +68,24 @@ class ShellLexer {
   }
 
   scan(): readonly Token[] {
-    for (; this.index < this.command.length; this.index += 1) this.readCharacter();
+    for (; this.index < this.command.length; this.index += 1) {
+      if (!this.readPlainRun()) this.readCharacter();
+    }
     // Unterminated quotes make the command incomplete.
     if (this.quote !== undefined) return [];
     this.flush();
     return this.tokens;
+  }
+
+  private readPlainRun(): boolean {
+    if (this.quote !== undefined) return false;
+    this.plain.lastIndex = this.index;
+    const match = this.plain.exec(this.command);
+    if (match === null) return false;
+    this.buffer += match[0];
+    this.started = true;
+    this.index += match[0].length - 1;
+    return true;
   }
 
   private flush(): void {

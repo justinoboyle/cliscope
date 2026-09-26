@@ -102,11 +102,15 @@ jobs:
           node-version: '26.9.0'
           cache: npm
       - run: npm ci
-      - run: npm pack --pack-destination "${{ runner.temp }}"
+      - run: mkdir -p package
+      - run: npm pack --pack-destination ./package
+      - name: Validate release archive publication without publishing
+        # CI must accept an already-published package version; --dry-run prevents uploads.
+        run: npm publish ./package/cliscope-*.tgz --ignore-scripts --access public --tag latest --provenance=false --dry-run --force
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: npm-package
-          path: ${{ runner.temp }}/cliscope-*.tgz
+          path: package/cliscope-*.tgz
           if-no-files-found: error
           retention-days: 7
 

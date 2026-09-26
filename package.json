@@ -1,6 +1,6 @@
 {
   "name": "cliscope",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Print command counts and activity graphs from shell history",
   "homepage": "https://github.com/justinoboyle/cliscope#readme",
   "bugs": {

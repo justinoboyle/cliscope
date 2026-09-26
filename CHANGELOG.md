@@ -2,6 +2,11 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 — 2026-09-26
+
+- Fix automatic npm publishing: use an explicit local tarball path and check it with a dry run before release.
+- Reduce shell scanning work for ordinary words and paths; retain the existing performance limits.
+
 ## 0.2.0 — 2026-09-26
 
 - Run the npm package on Node.js 20.13.1 and later through a bundled application and pinned Bun runtime.
