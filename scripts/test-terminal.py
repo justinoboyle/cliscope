@@ -36,14 +36,20 @@ class Screen:
     def __init__(self, columns: int, rows: int) -> None:
         self.pending = ""
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self.cells: list[list[str]] = []
+        self.x = self.y = 0
+        self.saved = (0, 0)
+        self.updating = False
+        self.frames = 0
         self.resize(columns, rows)
 
     def resize(self, columns: int, rows: int) -> None:
-        self.columns = columns
-        self.rows = rows
-        self.cells = [[" "] * columns for _ in range(rows)]
-        self.x = self.y = 0
-        self.saved = (0, 0)
+        # Resizing a terminal does not erase cells the renderer may leave alone.
+        cells = [row[:columns] + [" "] * max(0, columns - len(row)) for row in self.cells[:rows]]
+        cells.extend([[" "] * columns for _ in range(rows - len(cells))])
+        self.columns, self.rows, self.cells = columns, rows, cells
+        self.x, self.y = min(self.x, columns - 1), min(self.y, rows - 1)
+        self.saved = (min(self.saved[0], columns - 1), min(self.saved[1], rows - 1))
 
     def text(self) -> str:
         return "\n".join("".join(row).rstrip() for row in self.cells)
@@ -63,6 +69,11 @@ class Screen:
             self.cells[row][column] = " "
 
     def csi(self, parameters: str, final: str) -> None:
+        if parameters == "?2026":
+            self.updating = final == "h"
+            if final == "l":
+                self.frames += 1
+            return
         if parameters.startswith(("?", ">", "<", "=")):
             return
         values = [int(value) if value.isdigit() else 0 for value in parameters.split(";")]
@@ -186,11 +197,13 @@ class Terminal:
         if len(self.output) > 4_000_000:
             raise AssertionError("Terminal output exceeded the 4 MB safety limit")
 
-    def wait_for(self, predicate: Callable[[str], bool], description: str, timeout: float = 15) -> None:
+    def wait_for(self, predicate: Callable[[str], bool], description: str, timeout: float = 15, after_frame: int = -1) -> None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.read()
-            if predicate(self.screen.text()):
+            # A PTY read can end halfway through an atomic terminal frame.
+            complete = not self.screen.updating and not self.screen.pending and self.screen.frames > after_frame
+            if complete and predicate(self.screen.text()):
                 return
             if self.process.poll() is not None:
                 raise AssertionError(f"Process exited {self.process.returncode} while waiting for {description}\n{self.screen.text()}")
@@ -199,14 +212,16 @@ class Terminal:
     def send(self, value: bytes) -> None:
         os.write(self.master, value)
 
-    def resize(self, columns: int, rows: int) -> None:
+    def resize(self, columns: int, rows: int) -> int:
         import fcntl
         import struct
         import termios
 
+        frame = self.screen.frames
         self.screen.resize(columns, rows)
         fcntl.ioctl(self.master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
         os.killpg(self.process.pid, signal.SIGWINCH)
+        return frame
 
     def expect_exit(self, allowed_codes: tuple[int, ...]) -> None:
         deadline = time.monotonic() + 10
@@ -239,6 +254,31 @@ def docker_selected(screen: str) -> bool:
     return re.search(r"docker\s+\|\s+61 invocations\s+\|\s+12\.9%", screen) is not None
 
 
+def compact_dashboard(screen: str) -> bool:
+    lines = screen.split("\n")
+    return (len(lines) == 14 and lines[2].startswith(" Filter: all tools")
+            and "Source:" not in screen and "Selected tool" not in screen
+            and "474 invocations" in screen and "docker" in screen and "12.9%" in screen)
+
+
+def check_screen_resize() -> None:
+    """Check cell preservation and fragmented synchronized frames without a PTY."""
+    screen = Screen(80, 28)
+    screen.feed(b"\x1b[?2026h\x1b[2;2Hretained\x1b[?2026l")
+    screen.resize(44, 14)
+    assert screen.cells[1][1:9] == list("retained")
+    assert (screen.x, screen.y) == (9, 1)
+    screen.resize(80, 28)
+    screen.feed(b"\x1b[?2026h\x1b[24;2Hupdated tail")
+    assert screen.updating and screen.frames == 1
+    screen.feed(b"\x1b[?2026")
+    assert screen.pending and screen.updating
+    screen.feed(b"l")
+    assert not screen.updating and screen.frames == 2
+    assert "retained" in screen.text() and "updated tail" in screen.text()
+    assert not compact_dashboard(screen.text())
+
+
 def exercise(command: list[str]) -> None:
     terminal = Terminal(command)
     try:
@@ -249,10 +289,10 @@ def exercise(command: list[str]) -> None:
         terminal.wait_for(ready, "Escape restoring all tools")
         terminal.send(b"j\x1b[B")
         terminal.wait_for(docker_selected, "j and Down selecting the third tool")
-        terminal.resize(44, 14)
-        terminal.wait_for(lambda screen: "474 invocations" in screen and "docker" in screen and "12.9%" in screen, "narrow resized dashboard")
-        terminal.resize(80, 28)
-        terminal.wait_for(docker_selected, "full-sized detail after resize")
+        frame = terminal.resize(44, 14)
+        terminal.wait_for(compact_dashboard, "narrow resized dashboard", after_frame=frame)
+        frame = terminal.resize(80, 28)
+        terminal.wait_for(lambda screen: "Source:" in screen and docker_selected(screen), "full-sized detail after resize", after_frame=frame)
         terminal.send(b"\t")
         terminal.wait_for(lambda screen: "Calendar / UTC" in screen and "2026-09" in screen and "Sun" in screen, "calendar view")
         terminal.send(b"\t")
@@ -285,6 +325,7 @@ def main() -> int:
         print("SKIP: terminal regression requires a POSIX pseudo-terminal")
         return 0
     try:
+        check_screen_resize()
         exercise(arguments.command)
     except (AssertionError, OSError, subprocess.SubprocessError) as error:
         print(f"FAIL: {error}", file=sys.stderr)

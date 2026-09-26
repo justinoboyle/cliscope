@@ -100,6 +100,20 @@ The installed npm tarball also passed nine consumer smoke checks under Node
 test after the native-runtime resolution fix. Installation used `--engine-strict --ignore-scripts`. Workflow syntax passed `actionlint`. These local checks do not
 substitute for the remaining CI matrix.
 
+The macOS Intel standalone job in [CI run 36272411362](https://github.com/justinoboyle/cliscope/actions/runs/36272411362)
+timed out after resizing back to the full dashboard. Its reconstructed screen
+contained only the tail of a frame. The PTY harness erased all modeled cells on
+resize and evaluated content before OpenTUI's synchronized frame had completed.
+It now preserves overlapping cells and cursor positions, waits for the completed
+frame marker, and requires a new frame with the compact layout before expanding.
+The full-size assertion still requires the selected tool's exact count and share.
+Timeouts were not increased. An in-script regression covers cell preservation and
+frame markers split across reads. Local macOS validation passed ten complete
+interaction runs for the Node launcher and ten for the standalone executable.
+Both also passed with PTY reads restricted to 37 bytes; captured native output
+contained matching synchronized-frame starts and ends. These checks establish
+the harness behavior locally; the macOS Intel job must still pass in CI.
+
 ## Remaining limits
 
 The parser recognizes lexical commands, not execution outcomes. Alias resolution,
