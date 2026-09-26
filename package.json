@@ -1,0 +1,62 @@
+{
+  "name": "cliscope",
+  "version": "0.1.0",
+  "description": "Local-first shell history analytics with terminal charts and an OpenTUI dashboard",
+  "homepage": "https://github.com/justinoboyle/cliscope#readme",
+  "bugs": {
+    "url": "https://github.com/justinoboyle/cliscope/issues"
+  },
+  "license": "MIT",
+  "author": "Justin O'Boyle",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justinoboyle/cliscope.git"
+  },
+  "bin": {
+    "cliscope": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx src/cli.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "build:binary": "bun scripts/build-binary.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware --deny-warnings",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "test": "node --import tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "verify": "npm run check && npm test && npm run build && npm run build:binary",
+    "prepack": "npm run check && npm test && npm run build",
+    "prepare": "node scripts/install-hooks.mjs"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.12",
+    "string-width": "8.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/node": "26.6.3",
+    "bun": "1.4.2",
+    "fast-check": "4.10.2",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=26.4.0"
+  },
+  "allowScripts": {
+    "bun@1.4.2": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": false
+  }
+}

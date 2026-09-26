@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+            executable: cliscope
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+            executable: cliscope
+          - runner: macos-15-intel
+            target: darwin-x64
+            executable: cliscope
+          - runner: macos-15
+            target: darwin-arm64
+            executable: cliscope
+          - runner: windows-2025
+            target: windows-x64
+            executable: cliscope.exe
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26.9.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:binary
+      - name: Smoke-test standalone executable
+        run: |
+          ./artifacts/${{ matrix.executable }} --version
+          ./artifacts/${{ matrix.executable }} --help
+          ./artifacts/${{ matrix.executable }} --demo --json > artifacts/demo.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('artifacts/demo.json', 'utf8'));
+          assert.ok(report.totalInvocations > 0, 'Demo must contain invocations');
+          assert.ok(report.tools.length > 0, 'Demo must contain ranked tools');
+          NODE
+      - name: Package standalone executable
+        run: |
+          cp LICENSE README.md artifacts/
+          tar -czf artifacts/cliscope-${{ matrix.target }}.tar.gz -C artifacts ${{ matrix.executable }} LICENSE README.md
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cliscope-${{ matrix.target }}
+          path: artifacts/cliscope-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  quality-gate:
+    name: Quality gate
+    needs: verify
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every platform to pass
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success
