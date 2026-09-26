@@ -1,6 +1,6 @@
 {
   "name": "cliscope",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first shell history analytics with terminal charts and an OpenTUI dashboard",
   "homepage": "https://github.com/justinoboyle/cliscope#readme",
   "bugs": {
