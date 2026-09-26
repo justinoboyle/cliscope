@@ -1,8 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "jsPlugins": ["eslint-plugin-sonarjs"],
   "categories": { "correctness": "error", "suspicious": "error" },
   "rules": {
+    "sonarjs/cognitive-complexity": ["error", 15],
+    "sonarjs/no-identical-functions": "error",
+    "max-depth": ["error", 4],
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/no-unsafe-assignment": "error",

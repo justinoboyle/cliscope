@@ -1,7 +1,7 @@
 {
   "name": "cliscope",
-  "version": "0.1.1",
-  "description": "Local-first shell history analytics with terminal charts and an OpenTUI dashboard",
+  "version": "0.2.0",
+  "description": "Print command counts and activity graphs from shell history",
   "homepage": "https://github.com/justinoboyle/cliscope#readme",
   "bugs": {
     "url": "https://github.com/justinoboyle/cliscope/issues"
@@ -13,7 +13,7 @@
     "url": "git+https://github.com/justinoboyle/cliscope.git"
   },
   "bin": {
-    "cliscope": "dist/cli.js"
+    "cliscope": "dist/launcher.js"
   },
   "files": [
     "dist",
@@ -22,37 +22,50 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "node --import tsx src/cli.ts",
-    "build": "tsc -p tsconfig.build.json",
-    "build:binary": "bun scripts/build-binary.ts",
+    "dev": "bun --no-env-file src/cli.ts",
+    "build": "bun scripts/build-package.ts && npm run bench -- --startup",
+    "build:binary": "bun scripts/build-binary.ts && npm run bench -- --binary",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --type-aware --deny-warnings",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts && npm run bench",
     "check": "npm run typecheck && npm run lint && npm run format:check",
     "verify": "npm run check && npm test && npm run build && npm run build:binary",
     "prepack": "npm run check && npm test && npm run build",
-    "prepare": "node scripts/install-hooks.mjs"
+    "prepare": "node scripts/install-hooks.mjs",
+    "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "bench": "node --import tsx scripts/benchmark.ts"
   },
   "dependencies": {
-    "@opentui/core": "0.5.12",
-    "string-width": "8.3.0",
-    "zod": "4.6.5"
+    "bun": "1.4.2"
   },
   "devDependencies": {
+    "@opentui/core": "0.5.12",
     "@types/bun": "1.4.2",
     "@types/node": "26.6.3",
-    "bun": "1.4.2",
+    "eslint-plugin-sonarjs": "4.2.1",
     "fast-check": "4.10.2",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
     "oxlint-tsgolint": "7.0.2003",
+    "string-width": "8.3.0",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "6.0.3",
+    "zod": "4.6.5"
+  },
+  "optionalDependencies": {
+    "@opentui/core-darwin-arm64": "0.5.12",
+    "@opentui/core-darwin-x64": "0.5.12",
+    "@opentui/core-linux-arm64": "0.5.12",
+    "@opentui/core-linux-arm64-musl": "0.5.12",
+    "@opentui/core-linux-x64": "0.5.12",
+    "@opentui/core-linux-x64-musl": "0.5.12",
+    "@opentui/core-win32-arm64": "0.5.12",
+    "@opentui/core-win32-x64": "0.5.12"
   },
   "engines": {
-    "node": ">=26.4.0"
+    "node": ">=20.13.1"
   },
   "allowScripts": {
     "bun@1.4.2": true,

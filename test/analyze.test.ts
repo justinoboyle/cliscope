@@ -4,6 +4,21 @@ import * as fc from 'fast-check';
 import { analyze } from '../src/analyze.js';
 import type { HistoryEntry } from '../src/types.js';
 
+await test('cache rollover and long commands preserve counts across UTC epoch boundaries', () => {
+  const entries = Array.from({ length: 2050 }, (_, index) => ({
+    command: `git status item-${index}`,
+    timestamp: index % 2 === 0 ? -1 : 0,
+  }));
+  entries.push({ command: `git ${'x'.repeat(5000)}`, timestamp: 0 });
+  const report = analyze(entries);
+  assert.equal(report.totalInvocations, 2051);
+  assert.deepEqual(report.tools, [{ name: 'git', count: 2051, share: 1 }]);
+  assert.deepEqual(report.days, [
+    { date: '1969-12-31', count: 1025 },
+    { date: '1970-01-01', count: 1026 },
+  ]);
+});
+
 await test('aggregates invocations, deterministic ties and UTC activity', () => {
   const result = analyze([
     { command: 'git status && npm test', timestamp: Date.parse('2024-01-01T23:59:59Z') },

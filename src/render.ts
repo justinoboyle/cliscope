@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from 'node:util';
 import stringWidth from 'string-width';
-import type { Report, ToolStat } from './types.js';
+import type { Report, ToolStat, View } from './types.js';
 
 export interface RenderOptions {
   readonly width: number;
@@ -8,6 +8,7 @@ export interface RenderOptions {
   readonly ascii: boolean;
   readonly limit: number;
   readonly source: string;
+  readonly view?: View;
 }
 
 const numberFormat = new Intl.NumberFormat('en-US');
@@ -101,7 +102,7 @@ export function activityLines(report: Report, width: number, ascii: boolean): re
     )
     .join('');
   return [
-    `DAILY ACTIVITY / UTC / ${dayCount} ${dayCount === 1 ? 'day' : 'days'}`,
+    `Daily activity (UTC, ${dayCount} ${dayCount === 1 ? 'day' : 'days'})`,
     line,
     `${new Date(start).toISOString().slice(0, 10)} - ${last.date}  |  peak ${formatCount(maximum)} invocations/day`,
   ];
@@ -117,17 +118,17 @@ export function renderReport(report: Report, options: RenderOptions): string {
     const code = style === 'title' ? '1;36' : style === 'muted' ? '2' : '36';
     lines.push(options.color && style ? `\u001b[${code}m${line}\u001b[0m` : line);
   };
-  add('CLISCOPE  /  YOUR TERMINAL, IN NUMBERS', 'title');
   add(
     `${formatCount(report.totalInvocations)} invocations  |  ${formatCount(report.uniqueTools)} tools  |  ${formatCount(report.totalEntries)} history entries`,
+    'title',
   );
   add(`Source: ${options.source}`, 'muted');
   add('');
   if (report.tools.length === 0) {
-    add('No CLI tools found in this history.');
-    add('Try --history PATH --shell bash|zsh|fish.', 'muted');
+    add('No tools found in this history.');
+    add('Use --history PATH --shell bash|zsh|fish.', 'muted');
   } else {
-    add(`TOP ${tools.length} TOOLS  /  COUNT + SHARE`, 'muted');
+    add(`Top ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'} (count, share)`, 'muted');
     const maximum = report.tools[0]?.count ?? 0;
     for (const [index, tool] of tools.entries()) {
       add(
@@ -145,7 +146,5 @@ export function renderReport(report: Report, options: RenderOptions): string {
   }
   add('');
   for (const line of activityLines(report, width, options.ascii)) add(line, 'muted');
-  add('');
-  add('Explore with cliscope -i  |  Local history. No telemetry.', 'muted');
   return `${lines.join('\n')}\n`;
 }

@@ -5,6 +5,7 @@ const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const outputDirectory = `${projectRoot}artifacts`;
 const executableName = process.platform === 'win32' ? 'cliscope.exe' : 'cliscope';
 
+const started = performance.now();
 await mkdir(outputDirectory, { recursive: true });
 
 // Build on the target host so npm installs the matching OpenTUI native package.
@@ -29,5 +30,7 @@ if (!result.success) {
   }
   process.exitCode = 1;
 } else {
-  console.log(`Built ${outputDirectory}/${executableName}`);
+  console.log(
+    `Built ${outputDirectory}/${executableName} in ${Math.round(performance.now() - started)} ms`,
+  );
 }

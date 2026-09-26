@@ -1,4 +1,19 @@
-import type { BorderCharacters, KeyEvent } from '@opentui/core';
+import type * as OpenTuiModule from '@opentui/core';
+import type {
+  BorderCharacters,
+  BoxRenderable,
+  CliRenderer,
+  KeyEvent,
+  TextRenderable,
+} from '@opentui/core';
+import { renderCalendar, renderWeekdays } from './calendar.js';
+import {
+  fitViewport,
+  initialState,
+  matchingTools,
+  reduceKey,
+  type InteractiveState,
+} from './interactive-state.js';
 import {
   activityLines,
   fitText,
@@ -8,7 +23,19 @@ import {
   terminalWidth,
   type RenderOptions,
 } from './render.js';
-import type { Report } from './types.js';
+import type { Report, ToolStat, View } from './types.js';
+
+type OpenTui = typeof OpenTuiModule;
+
+interface Dashboard {
+  readonly heading: TextRenderable;
+  readonly search: TextRenderable;
+  readonly chart: BoxRenderable;
+  readonly ranking: TextRenderable;
+  readonly detailPanel: BoxRenderable;
+  readonly detail: TextRenderable;
+  readonly help: TextRenderable;
+}
 
 const asciiBorder: BorderCharacters = {
   topLeft: '+',
@@ -24,177 +51,197 @@ const asciiBorder: BorderCharacters = {
   cross: '+',
 };
 
-/** OpenTUI is loaded only for interactive mode, keeping ordinary reports lightweight. */
-export async function runInteractive(report: Report, options: RenderOptions): Promise<void> {
-  const { BoxRenderable, TextRenderable, createCliRenderer } = await import('@opentui/core');
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
-    exitSignals: ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'],
-    useMouse: false,
-    backgroundColor: options.color ? '#101722' : 'transparent',
+function createDashboard(
+  library: OpenTui,
+  renderer: CliRenderer,
+  options: RenderOptions,
+): Dashboard {
+  const { BoxRenderable, TextRenderable, RGBA } = library;
+  const colors = options.color
+    ? { foreground: '#dce6f4', muted: '#91a1b8', accent: '#65d9c2', background: '#101722' }
+    : {
+        foreground: RGBA.defaultForeground(),
+        muted: RGBA.defaultForeground(),
+        accent: RGBA.defaultForeground(),
+        background: RGBA.defaultBackground(),
+      };
+  const border = options.ascii ? { customBorderChars: asciiBorder } : {};
+  const screen = new BoxRenderable(renderer, {
+    width: '100%',
+    height: '100%',
+    padding: 1,
+    flexDirection: 'column',
+    backgroundColor: colors.background,
   });
+  const heading = new TextRenderable(renderer, { height: 2, fg: colors.accent });
+  const search = new TextRenderable(renderer, { height: 2, fg: colors.muted });
+  const chart = new BoxRenderable(renderer, {
+    flexGrow: 1,
+    border: true,
+    borderStyle: 'rounded',
+    ...border,
+    title: ' Tool ranking ',
+    borderColor: colors.muted,
+    paddingX: 1,
+  });
+  const ranking = new TextRenderable(renderer, {
+    width: '100%',
+    height: '100%',
+    fg: colors.foreground,
+  });
+  const detailPanel = new BoxRenderable(renderer, {
+    height: 6,
+    border: true,
+    borderStyle: 'rounded',
+    ...border,
+    title: ' Selected tool ',
+    borderColor: colors.accent,
+    paddingX: 1,
+  });
+  const detail = new TextRenderable(renderer, { width: '100%', fg: colors.foreground });
+  const help = new TextRenderable(renderer, { height: 1, fg: colors.muted });
+  chart.add(ranking);
+  detailPanel.add(detail);
+  for (const child of [heading, search, chart, detailPanel, help]) screen.add(child);
+  renderer.root.add(screen);
+  return { heading, search, chart, ranking, detailPanel, detail, help };
+}
+
+function rankingText(
+  tools: readonly ToolStat[],
+  state: InteractiveState,
+  rows: number,
+  maximum: number,
+  width: number,
+  ascii: boolean,
+): string {
+  if (tools.length === 0) {
+    const message = state.query ? 'No tools match this filter.' : 'No tools found in this history.';
+    return fitText(message, width, ascii);
+  }
+  return tools
+    .slice(state.offset, state.offset + rows)
+    .map((tool, index) => {
+      const position = state.offset + index;
+      const marker = position === state.selected ? '>' : ' ';
+      return `${marker} ${renderToolRow(tool, position + 1, maximum, Math.max(1, width - 2), ascii)}`;
+    })
+    .join('\n');
+}
+
+function detailText(
+  report: Report,
+  tool: ToolStat | undefined,
+  width: number,
+  ascii: boolean,
+): string {
+  const summary = tool
+    ? `${safeText(tool.name)}  |  ${formatCount(tool.count)} invocations  |  ${(tool.share * 100).toFixed(1)}% of all invocations`
+    : 'Select a tool to see its share.';
+  const activity = activityLines(report, width, ascii).map((line, index) =>
+    index === 0 ? `All tools: ${line}` : line,
+  );
+  return [summary, ...activity].map((line) => fitText(line, width, ascii)).join('\n');
+}
+
+function filterText(state: InteractiveState, count: number): string {
+  const prefix = state.searching ? '/ ' : 'Filter: ';
+  const placeholder = state.searching ? '_' : 'all tools';
+  return `${prefix}${state.query || placeholder}  |  ${count} ${count === 1 ? 'match' : 'matches'}`;
+}
+
+const viewTitles: Readonly<Record<View, string>> = {
+  tools: ' Tool ranking ',
+  calendar: ' Calendar / UTC ',
+  weekdays: ' Weekdays / UTC ',
+};
+
+function chartText(
+  report: Report,
+  tools: readonly ToolStat[],
+  state: InteractiveState,
+  rows: number,
+  width: number,
+  ascii: boolean,
+): string {
+  if (state.view === 'tools') {
+    return rankingText(tools, state, rows, report.tools[0]?.count ?? 0, width, ascii);
+  }
+  const content =
+    state.view === 'calendar'
+      ? renderCalendar(report, width, ascii)
+      : renderWeekdays(report, width, ascii);
+  return content
+    .trimEnd()
+    .split('\n')
+    .slice(0, rows)
+    .map((line) => fitText(line, width, ascii))
+    .join('\n');
+}
+
+function helpText(state: InteractiveState): string {
+  if (state.view !== 'tools') return 'Tab switch view  |  q quit';
+  if (state.searching) return 'Type to filter  |  Enter done  |  Esc reset  |  Ctrl+C quit';
+  return 'j/k move  |  / filter  |  Tab view  |  Esc reset  |  q quit';
+}
+
+function drawDashboard(
+  view: Dashboard,
+  renderer: CliRenderer,
+  report: Report,
+  options: RenderOptions,
+  current: InteractiveState,
+): InteractiveState {
+  const width = terminalWidth(renderer.width - 2);
+  const chartWidth = Math.max(1, width - 4);
+  const compact = renderer.height < 20;
+  const showDetail = !compact && current.view === 'tools';
+  const reserved = (compact ? 7 : 9) + (showDetail ? 6 : 0);
+  const rows = Math.max(1, renderer.height - reserved);
+  const tools = matchingTools(report.tools, current.query);
+  const state = fitViewport(current, tools.length, rows);
+  const truncate = (value: string): string => fitText(value, width, options.ascii);
+  const summary = `${formatCount(report.totalInvocations)} invocations  |  ${formatCount(report.uniqueTools)} tools  |  ${formatCount(report.totalEntries)} history entries`;
+  view.detailPanel.visible = showDetail;
+  view.heading.height = compact ? 1 : 2;
+  view.search.height = compact ? 1 : 2;
+  view.heading.content = compact
+    ? truncate(summary)
+    : [summary, `Source: ${options.source}`].map(truncate).join('\n');
+  view.search.content = truncate(
+    state.view === 'tools' ? filterText(state, tools.length) : 'All timestamped invocations',
+  );
+  view.chart.title = viewTitles[state.view];
+  view.ranking.content = chartText(report, tools, state, rows, chartWidth, options.ascii);
+  view.detail.content = detailText(report, tools[state.selected], chartWidth, options.ascii);
+  view.help.content = truncate(helpText(state));
+  return state;
+}
+
+async function handleInput(
+  renderer: CliRenderer,
+  view: Dashboard,
+  report: Report,
+  options: RenderOptions,
+): Promise<void> {
+  let state = { ...initialState, view: options.view ?? 'tools' };
   let removeListeners: (() => void) | undefined;
   try {
-    const foreground = options.color ? '#dce6f4' : undefined;
-    const muted = options.color ? '#91a1b8' : undefined;
-    const accent = options.color ? '#65d9c2' : undefined;
-    const screen = new BoxRenderable(renderer, {
-      width: '100%',
-      height: '100%',
-      padding: 1,
-      flexDirection: 'column',
-      ...(options.color ? { backgroundColor: '#101722' } : {}),
-    });
-    const heading = new TextRenderable(renderer, {
-      height: 3,
-      ...(accent ? { fg: accent } : {}),
-    });
-    const search = new TextRenderable(renderer, {
-      height: 2,
-      ...(muted ? { fg: muted } : {}),
-    });
-    const chart = new BoxRenderable(renderer, {
-      flexGrow: 1,
-      border: true,
-      borderStyle: options.ascii ? 'single' : 'rounded',
-      ...(options.ascii ? { customBorderChars: asciiBorder } : {}),
-      title: ' Tool ranking ',
-      ...(muted ? { borderColor: muted } : {}),
-      paddingX: 1,
-    });
-    const ranking = new TextRenderable(renderer, {
-      width: '100%',
-      height: '100%',
-      ...(foreground ? { fg: foreground } : {}),
-    });
-    const detailPanel = new BoxRenderable(renderer, {
-      height: 6,
-      border: true,
-      borderStyle: options.ascii ? 'single' : 'rounded',
-      ...(options.ascii ? { customBorderChars: asciiBorder } : {}),
-      title: ' Selected tool ',
-      ...(accent ? { borderColor: accent } : {}),
-      paddingX: 1,
-    });
-    const detail = new TextRenderable(renderer, {
-      width: '100%',
-      ...(foreground ? { fg: foreground } : {}),
-    });
-    const help = new TextRenderable(renderer, {
-      height: 1,
-      ...(muted ? { fg: muted } : {}),
-    });
-    chart.add(ranking);
-    detailPanel.add(detail);
-    screen.add(heading);
-    screen.add(search);
-    screen.add(chart);
-    screen.add(detailPanel);
-    screen.add(help);
-    renderer.root.add(screen);
-
-    let query = '';
-    let searching = false;
-    let selected = 0;
-    let offset = 0;
-    const matchingTools = (): typeof report.tools =>
-      report.tools.filter((tool) =>
-        safeText(tool.name).toLocaleLowerCase('en-US').includes(query.toLocaleLowerCase('en-US')),
-      );
-    const redraw = (): void => {
-      const width = terminalWidth(renderer.width - 2);
-      const chartWidth = Math.max(1, width - 4);
-      const compact = renderer.height < 20;
-      detailPanel.visible = !compact;
-      heading.height = compact ? 1 : 3;
-      search.height = compact ? 1 : 2;
-      const rows = Math.max(1, renderer.height - (compact ? 7 : 16));
-      const tools = matchingTools();
-      selected = Math.max(0, Math.min(selected, tools.length - 1));
-      offset = Math.max(0, Math.min(offset, selected));
-      if (selected >= offset + rows) offset = selected - rows + 1;
-      const truncate = (value: string): string => fitText(value, width, options.ascii);
-      heading.content = compact
-        ? truncate('CLISCOPE')
-        : [
-            truncate('CLISCOPE  /  YOUR TERMINAL, IN NUMBERS'),
-            truncate(
-              `${formatCount(report.totalInvocations)} invocations  |  ${formatCount(report.uniqueTools)} tools  |  ${formatCount(report.totalEntries)} history entries`,
-            ),
-            truncate(`Source: ${options.source}`),
-          ].join('\n');
-      search.content = truncate(
-        `${searching ? '/ ' : 'Filter: '}${query || (searching ? '_' : 'all tools')}  |  ${tools.length} matches`,
-      );
-      ranking.content =
-        tools.length === 0
-          ? fitText(
-              query ? 'No tools match this filter.' : 'No CLI tools found in this history.',
-              chartWidth,
-              options.ascii,
-            )
-          : tools
-              .slice(offset, offset + rows)
-              .map((tool, index) => {
-                const position = offset + index;
-                return `${position === selected ? '>' : ' '} ${renderToolRow(tool, position + 1, report.tools[0]?.count ?? 0, Math.max(1, chartWidth - 2), options.ascii)}`;
-              })
-              .join('\n');
-      const tool = tools[selected];
-      const activity = activityLines(report, Math.max(1, chartWidth), options.ascii);
-      detail.content = [
-        tool
-          ? `${safeText(tool.name)}  |  ${formatCount(tool.count)} invocations  |  ${(tool.share * 100).toFixed(1)}% of all invocations`
-          : 'Select a tool to see its share.',
-        ...activity.map((line, index) => (index === 0 ? `All tools: ${line}` : line)),
-      ]
-        .map((line) => fitText(line, chartWidth, options.ascii))
-        .join('\n');
-      help.content = truncate(
-        searching
-          ? 'Type to filter  |  Enter done  |  Esc reset  |  Ctrl+C quit'
-          : 'j/k or arrows move  |  / filter  |  Esc reset  |  q quit',
-      );
-    };
-
     await new Promise<void>((resolve, reject) => {
       const update = (): void => {
         try {
-          redraw();
+          state = drawDashboard(view, renderer, report, options, state);
         } catch (error: unknown) {
           reject(error);
         }
       };
       const onKey = (key: KeyEvent): void => {
-        if (key.name === 'escape') {
-          query = '';
-          searching = false;
-          selected = 0;
-          offset = 0;
-        } else if (searching) {
-          if (key.name === 'return') searching = false;
-          else if (key.name === 'backspace') {
-            query = Array.from(query).slice(0, -1).join('');
-            selected = 0;
-          } else if (
-            !key.ctrl &&
-            !key.meta &&
-            safeText(key.sequence) === key.sequence &&
-            key.sequence.length > 0 &&
-            Array.from(key.sequence).length === 1
-          ) {
-            query = (query + key.sequence).slice(0, 128);
-            selected = 0;
-          }
-        } else if (key.name === 'q') {
+        const count = matchingTools(report.tools, state.query).length;
+        state = reduceKey(state, key, count);
+        if (state.quitting) {
           renderer.destroy();
           return;
-        } else if (key.sequence === '/') searching = true;
-        else if (key.name === 'j' || key.name === 'down') selected++;
-        else if (key.name === 'k' || key.name === 'up') selected--;
-        else if (key.name === 'end' || (key.name === 'g' && key.shift))
-          selected = matchingTools().length - 1;
-        else if (key.name === 'home' || key.name === 'g') selected = 0;
+        }
         update();
       };
       renderer.once('destroy', resolve);
@@ -209,6 +256,22 @@ export async function runInteractive(report: Report, options: RenderOptions): Pr
     });
   } finally {
     removeListeners?.();
+  }
+}
+
+/** OpenTUI is loaded only for interactive mode, keeping ordinary reports lightweight. */
+export async function runInteractive(report: Report, options: RenderOptions): Promise<void> {
+  const library = await import('@opentui/core');
+  const renderer = await library.createCliRenderer({
+    exitOnCtrlC: true,
+    exitSignals: ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'],
+    useMouse: false,
+    backgroundColor: options.color ? '#101722' : 'transparent',
+  });
+  try {
+    const view = createDashboard(library, renderer, options);
+    await handleInput(renderer, view, report, options);
+  } finally {
     renderer.destroy();
   }
 }
