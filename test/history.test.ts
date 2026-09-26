@@ -116,6 +116,15 @@ await test('dynamic names and nested substitutions are not expanded or executed'
   assert.deepEqual(extractTools('function greet { echo hello; }'), []);
 });
 
+await test('ordinary word runs preserve adjacent quotes, Unicode, expansions, and literal hashes', () => {
+  assert.deepEqual(
+    extractTools(
+      'A=x+y g"it" --path=src/lib.ts && ./git界 status; $tool-name args; path#literal file',
+    ),
+    ['git', 'git界', 'path#literal'],
+  );
+});
+
 await test('arbitrary text always parses and extracts without throwing', () => {
   fc.assert(
     fc.property(fc.string(), (text) => {

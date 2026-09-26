@@ -94,4 +94,4 @@ jobs:
       # Publish the exact archive installed and tested by the consumer matrix.
       # npm authenticates using this job's OIDC identity; no NPM_TOKEN is required.
       # npm provenance is unavailable for private GitHub repositories.
-      - run: npm publish package/cliscope-*.tgz --ignore-scripts --access public --tag latest --provenance=false
+      - run: npm publish ./package/cliscope-*.tgz --ignore-scripts --access public --tag latest --provenance=false

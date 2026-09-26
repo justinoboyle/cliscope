@@ -1,6 +1,6 @@
 # Maintainability audit
 
-Reviewed on 2026-09-26 during preparation of 0.2.0. This report records source
+Reviewed on 2026-09-26 during preparation of 0.2.0 and 0.2.1. This report records source
 inspection and local checks; it does not assert that every operating-system job
 has completed or that the shell parser has a formal correctness proof.
 
@@ -95,6 +95,19 @@ Use `artifacts/performance-test.json`, `performance-package.json`, and
 architecture, resident memory, and samples. `performance.json` contains the most
 recent phase. Build scripts also report elapsed build time.
 
+The 0.2.1 lexer consumes contiguous ordinary unquoted characters with a
+scanner-local sticky regular expression. Whitespace, quoting, expansions,
+operators, and other shell syntax retain their existing readers. The change
+removes per-character dispatch without introducing shared mutable state or
+caching the benchmark's input. An isolated seven-sample comparison measured
+100,000 command chains at 294 ms before and 218 ms after the change, and distinct
+command extraction at 135 ms before and 71 ms after. All 40,000 differential
+generated commands matched the previous implementation. The unchanged history
+property suite and an added adjacent-quote/Unicode/expansion regression passed.
+The repository benchmark then measured approximately 194 ms for 100,000 chains
+and 73 ms for aggregation of 100,000 distinct commands. Existing budgets remain
+unchanged; hosted-runner performance still requires CI verification.
+
 The installed npm tarball also passed nine consumer smoke checks under Node
 20.13.1 on macOS, a real `npm exec` invocation, and the POSIX terminal interaction
 test after the native-runtime resolution fix. Installation used `--engine-strict --ignore-scripts`. Workflow syntax passed `actionlint`. These local checks do not
@@ -123,3 +136,19 @@ runner; Windows still receives installed-package and native-build checks.
 Cross-platform workflow results must be read from CI, not inferred from a local
 macOS pass. Python and workflow fragments need manual complexity review when
 changed until language-specific automated checks are added.
+
+## npm archive path regression
+
+The npm publishing job in [release run 36273007264](https://github.com/justinoboyle/cliscope/actions/runs/36273007264)
+passed `package/cliscope-0.2.0.tgz` to npm. npm interpreted that relative spelling
+as a GitHub package reference and attempted `git ls-remote`, so publication failed
+after the binary release succeeded. The command now uses the explicit file path
+`./package/cliscope-*.tgz`.
+
+The CI pack job exercises that same path with `npm publish --dry-run` before
+uploading the tarball. Its dry run also uses `--force` because npm otherwise
+rejects a version already present in the registry, including during dry runs.
+Only the dry run uses this flag; the release publish retains npm's version check.
+An isolated dry run against the actual 0.2.0 tarball resolved its manifest and
+contents and returned success without publishing. This checks archive resolution,
+not OIDC authorization or a registry upload.

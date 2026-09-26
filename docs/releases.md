@@ -8,12 +8,12 @@ selects both the source commit and the workflow version.
 
 | Name            | Example                   | Use                                                                                                         |
 | --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Package version | `0.2.0`                   | Identifies the npm package and `cliscope --version` output. Both package manifests must match.              |
-| Git tag         | `v0.2.0`                  | Identifies a source commit. Never move or replace a published release tag.                                  |
-| npm dist-tag    | `latest` → `0.2.0`        | Selects the version installed by `npm install --global cliscope`. It moves when a new release is published. |
-| GitHub Release  | Release page for `v0.2.0` | Holds notes, binary archives, and checksums for the Git tag.                                                |
+| Package version | `0.2.1`                   | Identifies the npm package and `cliscope --version` output. Both package manifests must match.              |
+| Git tag         | `v0.2.1`                  | Identifies a source commit. Never move or replace a published release tag.                                  |
+| npm dist-tag    | `latest` → `0.2.1`        | Selects the version installed by `npm install --global cliscope`. It moves when a new release is published. |
+| GitHub Release  | Release page for `v0.2.1` | Holds notes, binary archives, and checksums for the Git tag.                                                |
 
-`npm install --global cliscope@0.2.0` selects an exact version. Moving `latest`
+`npm install --global cliscope@0.2.1` selects an exact version. Moving `latest`
 does not change that version or its Git tag. See [npm dist-tags](https://docs.npmjs.com/adding-dist-tags-to-packages/).
 
 Use [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`. After 1.0,
@@ -26,15 +26,15 @@ suffixes such as `-beta.1` are not supported by this workflow.
 
 ## Prepare and publish
 
-Substitute the next unpublished version for `0.2.0` below.
+Substitute the next unpublished version for `0.2.1` below.
 
 1. Create a branch and update the version:
 
    ```sh
    git switch main
    git pull --ff-only origin main
-   git switch -c release/0.2.0
-   npm version 0.2.0 --no-git-tag-version
+   git switch -c release/0.2.1
+   npm version 0.2.1 --no-git-tag-version
    ```
 
    This updates `package.json` and `package-lock.json` without creating a commit
@@ -49,8 +49,8 @@ Substitute the next unpublished version for `0.2.0` below.
    git switch main
    git pull --ff-only origin main
    node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version'
-   git tag -a v0.2.0 -m 'Release v0.2.0' HEAD
-   git push origin v0.2.0
+   git tag -a v0.2.1 -m 'Release v0.2.1' HEAD
+   git push origin v0.2.1
    ```
 
    Check the printed version before creating the tag. Use `git tag -s` instead
@@ -119,3 +119,7 @@ be overwritten.
 If the source or workflow needs a fix, merge it with a new version and create a
 new tag. Rerunning an old tag uses its original workflow, including `v0.1.0`,
 which predates npm automation. Never move a published tag to include a fix.
+
+The `v0.2.0` release published binaries, but npm rejected its tarball argument as
+a GitHub repository shorthand. Version `0.2.1` corrects the local path with a
+leading `./`. The original tag remains unchanged; the fix uses a new version and tag.
