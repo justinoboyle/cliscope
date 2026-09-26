@@ -1,0 +1,9 @@
+# Use identical source bytes on every platform, including Git for Windows.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.tar.gz binary
+*.exe binary
