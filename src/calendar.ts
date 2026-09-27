@@ -90,11 +90,15 @@ export function renderCalendar(report: Report, width: number, ascii: boolean): s
     Math.floor((endWeek - firstDay + 6) / 7) + 1,
   );
   const start = endWeek - (weeks - 1) * 7;
-  const counts = new Map(report.days.map((day) => [dateNumber(day.date), day.count]));
-  const visibleCounts = report.days
-    .filter((day) => dateNumber(day.date) >= start)
-    .map((day) => day.count);
-  const peak = Math.max(0, ...visibleCounts);
+  // Aggregation supplies one row per UTC date in ascending order. Only the last
+  // seven rows per displayed week can belong to this calendar window.
+  const counts = new Map(
+    report.days
+      .slice(-weeks * 7)
+      .map((day) => [dateNumber(day.date), day.count] as const)
+      .filter(([day]) => day >= start),
+  );
+  const peak = Math.max(0, ...counts.values());
   const lines = ['Calendar (UTC)', `${dateLabel(Math.max(firstDay, start))} to ${last.date}`];
   for (const [index, name] of WEEKDAYS.entries()) {
     const cells = Array.from({ length: weeks }, (_, week) => {

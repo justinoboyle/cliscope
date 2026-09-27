@@ -1,11 +1,12 @@
-import { extractTools, isHistoryTimestamp } from './history.js';
+import { isHistoryTimestamp } from './history.js';
+import { countTools, type ToolCounts } from './shell-tools.js';
 import type { AnalyzeOptions, HistoryEntry, Report } from './types.js';
 
 /** Bound caching so repeated history commands are parsed once without retaining a file. */
-function toolsFor(command: string, cache: Map<string, readonly string[]>): readonly string[] {
+function toolsFor(command: string, cache: Map<string, ToolCounts>): ToolCounts {
   const cached = cache.get(command);
   if (cached !== undefined) return cached;
-  const tools = extractTools(command);
+  const tools = countTools(command);
   if (command.length <= 4096) {
     if (cache.size === 1024) cache.clear();
     cache.set(command, tools);
@@ -14,13 +15,13 @@ function toolsFor(command: string, cache: Map<string, readonly string[]>): reado
 }
 
 /** Deterministic aggregation. Dates and the inclusive `since` boundary use UTC. */
-export function analyze(entries: readonly HistoryEntry[], options: AnalyzeOptions = {}): Report {
+export function analyze(entries: Iterable<HistoryEntry>, options: AnalyzeOptions = {}): Report {
   if (options.since !== undefined && !Number.isFinite(options.since)) {
     throw new RangeError('since must be a finite Unix timestamp in milliseconds');
   }
   const counts = new Map<string, number>();
   const days = new Map<number, number>();
-  const cache = new Map<string, readonly string[]>();
+  const cache = new Map<string, ToolCounts>();
   let totalEntries = 0;
   let totalInvocations = 0;
   let timestampedEntries = 0;
@@ -31,12 +32,12 @@ export function analyze(entries: readonly HistoryEntry[], options: AnalyzeOption
       continue;
     totalEntries += 1;
     const tools = toolsFor(entry.command, cache);
-    totalInvocations += tools.length;
-    for (const tool of tools) counts.set(tool, (counts.get(tool) ?? 0) + 1);
+    totalInvocations += tools.totalInvocations;
+    for (const [tool, count] of tools.counts) counts.set(tool, (counts.get(tool) ?? 0) + count);
     if (validTime && time !== null) {
       timestampedEntries += 1;
       const day = Math.floor(time / 86_400_000);
-      days.set(day, (days.get(day) ?? 0) + tools.length);
+      days.set(day, (days.get(day) ?? 0) + tools.totalInvocations);
     }
   }
   return {

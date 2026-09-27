@@ -118,4 +118,86 @@ await test('truncation preserves graphemes and never leaves half of a wide chara
   assert.equal(fitText('🦊🦊', 1), '…');
   assert.equal(fitText('hello', 0), '');
   assert.equal(fitText('hello', 3, true), 'he~');
+  assert.equal(fitText('界e\u0301', 3), '界e\u0301');
+  assert.equal(fitText('🇨🇦x', 2), '…');
+  assert.equal(fitText('👍🏽x', 2), '…');
+  assert.equal(fitText('\u0301', 0), '');
+});
+
+await test('combining marks cannot bypass output or grapheme segmentation bounds', () => {
+  const marks = '\u0301'.repeat(100_000);
+  assert.equal(fitText(marks, 20), '…');
+  assert.equal(fitText(`e${marks}`, 20, true), '~');
+  assert.equal(fitText(`ok e${marks}`, 20), 'ok …');
+  assert.equal(fitText(`ok ${marks}`, 20), 'ok…');
+  assert.equal(fitText(marks, 0), '');
+  const sampledSurrogate = fitText(`${'\u0301'.repeat(351)}🦊x`, 22);
+  assert.equal(sampledSurrogate, `${'\u0301'.repeat(351)}…`);
+  assert.equal(fitText('e\u0301\u0323 🇨🇦 👍🏽 1️⃣', 20), 'e\u0301\u0323 🇨🇦 👍🏽 1️⃣');
+  const output = renderReport(
+    { ...report, tools: [{ name: marks, count: 12, share: 1 }] },
+    { ...options, source: marks },
+  );
+  assert.ok(Buffer.byteLength(output) < 2_000);
+});
+
+await test('mark-heavy labels obey code-unit and cell budgets together', () => {
+  fc.assert(
+    fc.property(
+      fc.array(fc.constantFrom('a', '\u0301', 'e\u0301', '界', '👍🏽', '\u001b[2J'), {
+        maxLength: 500,
+      }),
+      fc.integer({ min: 0, max: 40 }),
+      (parts, width) => {
+        const output = fitText(parts.join(''), width);
+        assert.ok(output.length <= width * 16);
+        assert.ok(stringWidth(output) <= width);
+        assert.doesNotMatch(output, /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u);
+      },
+    ),
+    { numRuns: 500 },
+  );
+});
+
+function referenceFit(value: string, width: number, ascii: boolean): string {
+  const clean = safeText(value);
+  if (stringWidth(clean) <= width) return clean;
+  if (width === 0) return '';
+  let result = '';
+  const segments = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  for (const { segment } of segments.segment(clean)) {
+    if (stringWidth(result + segment) > width - 1) break;
+    result += segment;
+  }
+  return result + (ascii ? '~' : '…');
+}
+
+await test('bounded grapheme measurement agrees with complete-width reference', () => {
+  fc.assert(
+    fc.property(
+      fc.array(fc.constantFrom('x', '界', 'e\u0301', '🇨🇦', '👍🏽', '1️⃣', '\u001b[2J', ' ')),
+      fc.integer({ min: 0, max: 40 }),
+      fc.boolean(),
+      (parts, width, ascii) => {
+        const name = parts.join('');
+        assert.equal(fitText(name, width, ascii), referenceFit(name, width, ascii));
+      },
+    ),
+    { numRuns: 500 },
+  );
+  assert.equal(fitText('界🦊e\u0301'.repeat(100_000), 8), '界🦊e\u0301界…');
+});
+
+await test('activity ignores old peaks and preserves gaps within its bounded UTC window', () => {
+  const days = [
+    { date: '1900-01-01', count: 1_000_000 },
+    { date: '2026-07-01', count: 99 },
+    ...report.days,
+  ];
+  const full = { ...report, days };
+  const suffix = { ...report, days: days.slice(1) };
+  for (const width of [1, 2, 3, 20, 56, 80]) {
+    assert.deepEqual(activityLines(full, width, false), activityLines(suffix, width, false));
+  }
+  assert.match(activityLines(full, 80, false).join('\n'), /peak 8 invocations\/day/u);
 });

@@ -2,18 +2,18 @@
 
 Validate external input before passing it to the typed model. Run the checks below before merging. Follow [style.md](style.md) for prose and [the maintenance skill](../.agents/skills/cliscope-maintenance/SKILL.md) for packaging regressions.
 
-| Boundary   | Hard rule                                                                                                       | Enforcement                                                             |
-| ---------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| CLI input  | Known flags only; top is an integer from 1–100; valid UTC dates; incompatible modes rejected                    | Node `parseArgs`, strict Zod schema, branded `TopLimit`, negative tests |
-| Filesystem | Regular files only, 64 MiB limit checked before and during reading, close handles even on errors                | `readHistoryFile`, nonblocking open, integration tests                  |
-| History    | Inert text, finite timestamps in years 0000–9999, explicit unknown timestamps                                   | Pure format parsers and property tests                                  |
-| Domain     | Readonly records; discriminated unions; total count equals sum of tool counts; deterministic ties; valid shares | Strict compiler and property tests                                      |
-| Display    | Strip terminal instructions and control characters; respect Unicode cell widths and terminal width              | Single rendering boundary and generated Unicode tests                   |
-| Async code | Handle promises and unknown errors explicitly                                                                   | Type-aware Oxlint rules                                                 |
-| Commit     | Compiler, lint, formatting must pass                                                                            | Repository pre-commit hook                                              |
-| Push       | Checks, tests, JS build, native build must pass                                                                 | Repository pre-push hook                                                |
-| Merge      | Five native builds and twelve installed-package checks must pass                                                | Required CI `Quality gate`                                              |
-| Release    | Annotated stable SemVer tag equals package version and is reachable from main; every platform verifies first    | Release workflow                                                        |
+| Boundary   | Hard rule                                                                                                                                       | Enforcement                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| CLI input  | Known flags only; top is an integer from 1–100; valid UTC dates; incompatible modes rejected                                                    | Node `parseArgs`, strict Zod schema, branded `TopLimit`, negative tests |
+| Filesystem | Regular files only, 64 MiB limit checked before and during reading, close handles even on errors                                                | `readHistoryFile`, nonblocking open, integration tests                  |
+| History    | Inert text, finite timestamps in years 0000–9999, explicit unknown timestamps                                                                   | Pure format parsers and property tests                                  |
+| Domain     | Readonly records; discriminated unions; total count equals sum of tool counts; deterministic ties; valid shares                                 | Strict compiler and property tests                                      |
+| Display    | Strip terminal instructions and control characters; respect Unicode cell widths and terminal width                                              | Single rendering boundary and generated Unicode tests                   |
+| Async code | Handle promises and unknown errors explicitly                                                                                                   | Type-aware Oxlint rules                                                 |
+| Commit     | Compiler, lint, formatting must pass                                                                                                            | Repository pre-commit hook                                              |
+| Push       | Checks, tests, JS build, native build must pass                                                                                                 | Repository pre-push hook                                                |
+| Merge      | Five native builds and twelve installed-package checks must pass                                                                                | Required CI `Quality gate`                                              |
+| Release    | Contract comparison selects SemVer; tested archive hashes and contract are bound to an immutable tag; all artifacts receive one stamped version | Release planner, contract tests, release workflow                       |
 
 ## Compiler rules
 
@@ -34,6 +34,13 @@ Property tests verify conservation of counts, ordering independence, input immut
 Hooks can be bypassed by Git, so CI and protected branches are the shared enforcement boundary. Run `npm run verify` before requesting review. Lockfile changes must explain dependency updates; lifecycle scripts are explicitly allowlisted by pinned version.
 
 ## Performance
+
+File measured performance defects before fixing them. Keep reproducible
+before/after evidence in [the performance audit](performance.md), including
+runtime, fixture, sample count, output assertions, and limitations. Heap limits
+and peak resident memory are different measurements; report both when relevant.
+The dense-history checks run each case in a separate process with a fixed heap
+limit. Cold and reused interactive data have separate timing cases.
 
 `npm test`, `npm run build`, and `npm run build:binary` run the same benchmark suite. Test output records the duration of each test. Build scripts report build time; benchmark output reports five-sample medians after warmup. The suite covers 100,000 history records, repeated and distinct commands, rendering, calendar calculations, and package or binary startup. Each case checks its result before comparing time against a fixed budget.
 

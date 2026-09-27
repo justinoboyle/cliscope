@@ -130,6 +130,8 @@ cliscope
 ```
 
 For standalone executables, see [binary installation](releases.md#install-a-binary).
+The same CLI is available as `@justinoboyle/cliscope` through
+[GitHub Packages](github-packages.md), which requires registry authentication.
 
 ## Exit status
 

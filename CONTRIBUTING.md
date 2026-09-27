@@ -1,7 +1,6 @@
 # Contributing
 
-Repository access is required to open a pull request. Source changes use the MIT
-license.
+Source changes use the MIT license. Open a pull request from a branch or fork.
 
 ## Development
 
@@ -24,15 +23,16 @@ tokens, or credentials.
 
 ## Pull requests and merges
 
-Create a branch from `main`. Include a description, tests, and a changelog entry
-in the pull request. Use a conventional commit
+Create a branch from `main`. Describe the behavior change and its tests.
+Use a conventional commit
 title, for example `fix: handle multiline fish history` or
-`feat: add a JSON export`. Use `!` for a breaking change and explain migration.
+`feat: add a JSON export`. Explain migration when existing behavior changes.
+The release contract determines the version; commit prefixes do not override it.
 
 Wait for **Quality gate** before merging. It requires native builds and installed
 npm package tests to pass. Squash merges and ordinary merge commits are supported.
 Resolve conflicts on the feature branch and rerun checks. Do not force-push `main`
 or move published release tags.
 
-Tag releases only after the version and changelog changes have landed on `main`.
-See [the release procedure](docs/releases.md).
+Merging starts automatic version selection and publication. Do not edit release
+versions, a changelog, or the generated contract lock. See [the release procedure](docs/releases.md).

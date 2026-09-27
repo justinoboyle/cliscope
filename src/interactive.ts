@@ -6,16 +6,14 @@ import type {
   KeyEvent,
   TextRenderable,
 } from '@opentui/core';
-import { renderCalendar, renderWeekdays } from './calendar.js';
+import { createInteractiveData, type InteractiveData } from './interactive-data.js';
 import {
   fitViewport,
   initialState,
-  matchingTools,
   reduceKey,
   type InteractiveState,
 } from './interactive-state.js';
 import {
-  activityLines,
   fitText,
   formatCount,
   renderToolRow,
@@ -130,7 +128,7 @@ function rankingText(
 }
 
 function detailText(
-  report: Report,
+  data: InteractiveData,
   tool: ToolStat | undefined,
   width: number,
   ascii: boolean,
@@ -138,10 +136,7 @@ function detailText(
   const summary = tool
     ? `${safeText(tool.name)}  |  ${formatCount(tool.count)} invocations  |  ${(tool.share * 100).toFixed(1)}% of all invocations`
     : 'Select a tool to see its share.';
-  const activity = activityLines(report, width, ascii).map((line, index) =>
-    index === 0 ? `All tools: ${line}` : line,
-  );
-  return [summary, ...activity].map((line) => fitText(line, width, ascii)).join('\n');
+  return [fitText(summary, width, ascii), ...data.lines('tools', width)].join('\n');
 }
 
 function filterText(state: InteractiveState, count: number): string {
@@ -158,6 +153,7 @@ const viewTitles: Readonly<Record<View, string>> = {
 
 function chartText(
   report: Report,
+  data: InteractiveData,
   tools: readonly ToolStat[],
   state: InteractiveState,
   rows: number,
@@ -167,16 +163,7 @@ function chartText(
   if (state.view === 'tools') {
     return rankingText(tools, state, rows, report.tools[0]?.count ?? 0, width, ascii);
   }
-  const content =
-    state.view === 'calendar'
-      ? renderCalendar(report, width, ascii)
-      : renderWeekdays(report, width, ascii);
-  return content
-    .trimEnd()
-    .split('\n')
-    .slice(0, rows)
-    .map((line) => fitText(line, width, ascii))
-    .join('\n');
+  return data.lines(state.view, width).slice(0, rows).join('\n');
 }
 
 function helpText(state: InteractiveState): string {
@@ -190,6 +177,7 @@ function drawDashboard(
   renderer: CliRenderer,
   report: Report,
   options: RenderOptions,
+  data: InteractiveData,
   current: InteractiveState,
 ): InteractiveState {
   const width = terminalWidth(renderer.width - 2);
@@ -198,7 +186,7 @@ function drawDashboard(
   const showDetail = !compact && current.view === 'tools';
   const reserved = (compact ? 7 : 9) + (showDetail ? 6 : 0);
   const rows = Math.max(1, renderer.height - reserved);
-  const tools = matchingTools(report.tools, current.query);
+  const tools = data.tools(current.query);
   const state = fitViewport(current, tools.length, rows);
   const truncate = (value: string): string => fitText(value, width, options.ascii);
   const summary = `${formatCount(report.totalInvocations)} invocations  |  ${formatCount(report.uniqueTools)} tools  |  ${formatCount(report.totalEntries)} history entries`;
@@ -212,8 +200,10 @@ function drawDashboard(
     state.view === 'tools' ? filterText(state, tools.length) : 'All timestamped invocations',
   );
   view.chart.title = viewTitles[state.view];
-  view.ranking.content = chartText(report, tools, state, rows, chartWidth, options.ascii);
-  view.detail.content = detailText(report, tools[state.selected], chartWidth, options.ascii);
+  view.ranking.content = chartText(report, data, tools, state, rows, chartWidth, options.ascii);
+  if (showDetail) {
+    view.detail.content = detailText(data, tools[state.selected], chartWidth, options.ascii);
+  }
   view.help.content = truncate(helpText(state));
   return state;
 }
@@ -224,19 +214,20 @@ async function handleInput(
   report: Report,
   options: RenderOptions,
 ): Promise<void> {
+  const data = createInteractiveData(report, options.ascii);
   let state = { ...initialState, view: options.view ?? 'tools' };
   let removeListeners: (() => void) | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
       const update = (): void => {
         try {
-          state = drawDashboard(view, renderer, report, options, state);
+          state = drawDashboard(view, renderer, report, options, data, state);
         } catch (error: unknown) {
           reject(error);
         }
       };
       const onKey = (key: KeyEvent): void => {
-        const count = matchingTools(report.tools, state.query).length;
+        const count = data.tools(state.query).length;
         state = reduceKey(state, key, count);
         if (state.quitting) {
           renderer.destroy();

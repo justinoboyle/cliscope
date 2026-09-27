@@ -1,0 +1,578 @@
+{
+  "date": "2026-09-26",
+  "platform": "darwin",
+  "arch": "arm64",
+  "method": "Presentation and installed-launcher probes: one warmup, median of five timed samples, milliseconds. Dense-command CLI: one isolated observation. Synthetic inputs only. Source helper calls are not complete terminal frames.",
+  "presentation": [
+    {
+      "runtime": "Node 26.9.0",
+      "case": "fitText-long-unicode",
+      "size": 500000,
+      "beforeMs": 55.827,
+      "afterMs": 1.523,
+      "beforeSamplesMs": [55.481, 55.547, 55.827, 55.851, 55.884],
+      "afterSamplesMs": [1.462, 1.465, 1.523, 1.631, 2.718]
+    },
+    {
+      "runtime": "Node 26.9.0",
+      "case": "activity-20-calls",
+      "size": 50000,
+      "beforeMs": 51.091,
+      "afterMs": 0.771,
+      "beforeSamplesMs": [49.978, 50.146, 51.091, 53.832, 56.361],
+      "afterSamplesMs": [0.751, 0.758, 0.771, 0.811, 0.859]
+    },
+    {
+      "runtime": "Node 26.9.0",
+      "case": "render-top10-many-tools",
+      "size": 50000,
+      "beforeMs": 0.026,
+      "afterMs": 0.026,
+      "beforeSamplesMs": [0.026, 0.026, 0.026, 0.027, 0.03],
+      "afterSamplesMs": [0.025, 0.026, 0.026, 0.029, 0.03]
+    },
+    {
+      "runtime": "Node 26.9.0",
+      "case": "csv-many-tools",
+      "size": 50000,
+      "beforeMs": 13.866,
+      "afterMs": 15.609,
+      "beforeSamplesMs": [12.213, 13.556, 13.866, 14.225, 15.249],
+      "afterSamplesMs": [14.407, 14.935, 15.609, 15.914, 16.031]
+    },
+    {
+      "runtime": "Bun 1.4.2",
+      "case": "fitText-long-unicode",
+      "size": 500000,
+      "beforeMs": 52.898,
+      "afterMs": 1.713,
+      "beforeSamplesMs": [52.806, 52.878, 52.898, 53.24, 53.422],
+      "afterSamplesMs": [1.686, 1.704, 1.713, 1.714, 1.719]
+    },
+    {
+      "runtime": "Bun 1.4.2",
+      "case": "activity-20-calls",
+      "size": 50000,
+      "beforeMs": 41.063,
+      "afterMs": 0.298,
+      "beforeSamplesMs": [39.474, 40.402, 41.063, 41.075, 42.91],
+      "afterSamplesMs": [0.285, 0.291, 0.298, 0.301, 0.309]
+    },
+    {
+      "runtime": "Bun 1.4.2",
+      "case": "render-top10-many-tools",
+      "size": 50000,
+      "beforeMs": 0.03,
+      "afterMs": 0.03,
+      "beforeSamplesMs": [0.027, 0.027, 0.03, 0.038, 0.038],
+      "afterSamplesMs": [0.027, 0.028, 0.03, 0.035, 0.046]
+    },
+    {
+      "runtime": "Bun 1.4.2",
+      "case": "csv-many-tools",
+      "size": 50000,
+      "beforeMs": 11.931,
+      "afterMs": 12.4,
+      "beforeSamplesMs": [11.66, 11.89, 11.931, 12.742, 12.794],
+      "afterSamplesMs": [11.394, 11.807, 12.4, 15.551, 16.22]
+    }
+  ],
+  "installedLauncher": {
+    "cases": [
+      {
+        "runtime": "Node 20.13.1",
+        "name": "published",
+        "args": ["--help"],
+        "samplesMs": [
+          83.18704199999999, 82.72000000000003, 80.05812500000002, 90.42308300000002,
+          82.76266700000002
+        ],
+        "medianMs": 82.76266700000002
+      },
+      {
+        "runtime": "Node 20.13.1",
+        "name": "published",
+        "args": ["--version"],
+        "samplesMs": [
+          80.86237500000004, 82.36337500000002, 82.74845799999991, 84.95866699999999,
+          82.99362500000007
+        ],
+        "medianMs": 82.74845799999991
+      },
+      {
+        "runtime": "Node 20.13.1",
+        "name": "published",
+        "args": ["--demo", "--json"],
+        "samplesMs": [
+          87.43704200000002, 86.82999999999993, 89.5787499999999, 83.64204200000017,
+          82.53641700000003
+        ],
+        "medianMs": 86.82999999999993
+      },
+      {
+        "runtime": "Node 20.13.1",
+        "name": "split",
+        "args": ["--help"],
+        "samplesMs": [
+          84.66300000000001, 67.97891700000014, 66.05141700000013, 65.85933299999988,
+          65.58004200000005
+        ],
+        "medianMs": 66.05141700000013
+      },
+      {
+        "runtime": "Node 20.13.1",
+        "name": "split",
+        "args": ["--version"],
+        "samplesMs": [
+          65.06491700000015, 66.28625000000011, 64.83300000000008, 63.38279199999988,
+          62.842749999999796
+        ],
+        "medianMs": 64.83300000000008
+      },
+      {
+        "runtime": "Node 20.13.1",
+        "name": "split",
+        "args": ["--demo", "--json"],
+        "samplesMs": [
+          65.0776249999999, 70.6874170000001, 69.54762500000015, 67.89300000000003,
+          67.68945800000029
+        ],
+        "medianMs": 67.89300000000003
+      },
+      {
+        "runtime": "Node 26.9.0",
+        "name": "published",
+        "args": ["--help"],
+        "samplesMs": [
+          77.11237500000016, 76.93949999999995, 79.37470900000017, 81.01674999999977,
+          77.67162499999995
+        ],
+        "medianMs": 77.67162499999995
+      },
+      {
+        "runtime": "Node 26.9.0",
+        "name": "published",
+        "args": ["--version"],
+        "samplesMs": [
+          78.48083399999996, 79.97212500000023, 80.4965830000001, 78.98558300000013,
+          78.98137499999984
+        ],
+        "medianMs": 78.98558300000013
+      },
+      {
+        "runtime": "Node 26.9.0",
+        "name": "published",
+        "args": ["--demo", "--json"],
+        "samplesMs": [
+          82.75800000000027, 82.1563329999999, 94.93429100000003, 83.04212499999949,
+          82.20383299999958
+        ],
+        "medianMs": 82.75800000000027
+      },
+      {
+        "runtime": "Node 26.9.0",
+        "name": "split",
+        "args": ["--help"],
+        "samplesMs": [
+          64.7353750000002, 68.21529199999986, 63.23933399999987, 64.71212500000001,
+          73.69466699999975
+        ],
+        "medianMs": 64.7353750000002
+      },
+      {
+        "runtime": "Node 26.9.0",
+        "name": "split",
+        "args": ["--version"],
+        "samplesMs": [
+          66.45279200000004, 62.59299999999985, 78.08687499999996, 62.46150000000034,
+          61.94591700000001
+        ],
+        "medianMs": 62.59299999999985
+      },
+      {
+        "runtime": "Node 26.9.0",
+        "name": "split",
+        "args": ["--demo", "--json"],
+        "samplesMs": [
+          67.85574999999972, 69.18220900000051, 67.25675000000047, 68.1098750000001,
+          66.80058400000053
+        ],
+        "medianMs": 67.85574999999972
+      }
+    ],
+    "sizes": {
+      "entry": 215633,
+      "bundle": 8983968,
+      "tarball": 1398727
+    }
+  },
+  "denseCommandCli": {
+    "issue": 14,
+    "runtime": "Node 26.9.0",
+    "fixture": "'a;'.repeat(2 * 1024 * 1024)",
+    "bytes": 4194304,
+    "heapLimitMiB": 128,
+    "samples": 1,
+    "before": {
+      "peakRssBytes": 241991680,
+      "durationMs": 781.11
+    },
+    "after": {
+      "peakRssBytes": 168722432,
+      "durationMs": 786.04
+    },
+    "expectedInvocations": 2097152,
+    "expectedTools": 1
+  },
+  "recordFragments": {
+    "issue": 17,
+    "runtime": "Node 26.9.0",
+    "heapLimitMiB": 64,
+    "method": "Three isolated processes per fixture; no warmup. Parser duration excludes startup. Median parser time and median peak RSS reported separately. Exact expected result is zero entries.",
+    "before": [
+      {
+        "shell": "bash",
+        "fixtureBodyBytes": 1048576,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 178.43879095744342,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 58.546790999999985,
+              "peakRssKiB": 133056,
+              "inputBytes": 1048579
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 137.5170840183273,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 58.543333000000004,
+              "peakRssKiB": 123584,
+              "inputBytes": 1048579
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 139.60633403621614,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 59.790791999999996,
+              "peakRssKiB": 123632,
+              "inputBytes": 1048579
+            }
+          }
+        ]
+      },
+      {
+        "shell": "bash",
+        "fixtureBodyBytes": 4194304,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 340.60758305713534,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 260.123875,
+              "peakRssKiB": 198464,
+              "inputBytes": 4194307
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 339.89875006955117,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 257.440334,
+              "peakRssKiB": 198672,
+              "inputBytes": 4194307
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 343.8712920760736,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 259.11170799999996,
+              "peakRssKiB": 198544,
+              "inputBytes": 4194307
+            }
+          }
+        ]
+      },
+      {
+        "shell": "zsh",
+        "fixtureBodyBytes": 1048576,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 119.53454196918756,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 36.028999999999996,
+              "peakRssKiB": 112960,
+              "inputBytes": 1048582
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 118.28554095700383,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 36.76266700000001,
+              "peakRssKiB": 112480,
+              "inputBytes": 1048582
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 115.59641698841006,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 35.186,
+              "peakRssKiB": 112496,
+              "inputBytes": 1048582
+            }
+          }
+        ]
+      },
+      {
+        "shell": "zsh",
+        "fixtureBodyBytes": 4194304,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 246.0050000809133,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 161.195917,
+              "peakRssKiB": 189184,
+              "inputBytes": 4194310
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 248.22704098187387,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 162.13975000000002,
+              "peakRssKiB": 188608,
+              "inputBytes": 4194310
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 254.16754197794944,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 161.274583,
+              "peakRssKiB": 189168,
+              "inputBytes": 4194310
+            }
+          }
+        ]
+      }
+    ],
+    "after": [
+      {
+        "shell": "bash",
+        "fixtureBodyBytes": 1048576,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 166.75416706129909,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 55.823417000000006,
+              "peakRssKiB": 90176,
+              "inputBytes": 1048579
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 137.0066669769585,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 58.164625,
+              "peakRssKiB": 80848,
+              "inputBytes": 1048579
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 149.24066595267504,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 59.43520899999999,
+              "peakRssKiB": 81056,
+              "inputBytes": 1048579
+            }
+          }
+        ]
+      },
+      {
+        "shell": "bash",
+        "fixtureBodyBytes": 4194304,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 346.0807909723371,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 246.41566699999998,
+              "peakRssKiB": 98816,
+              "inputBytes": 4194307
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 348.2930411119014,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 250.81183300000004,
+              "peakRssKiB": 98832,
+              "inputBytes": 4194307
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 284.0227499837056,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 207.321167,
+              "peakRssKiB": 99360,
+              "inputBytes": 4194307
+            }
+          }
+        ]
+      },
+      {
+        "shell": "zsh",
+        "fixtureBodyBytes": 1048576,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 99.7416659956798,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 24.433333000000005,
+              "peakRssKiB": 80384,
+              "inputBytes": 1048582
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 103.34858391433954,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 26.34370899999999,
+              "peakRssKiB": 80400,
+              "inputBytes": 1048582
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 104.74862495902926,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 26.756583,
+              "peakRssKiB": 80448,
+              "inputBytes": 1048582
+            }
+          }
+        ]
+      },
+      {
+        "shell": "zsh",
+        "fixtureBodyBytes": 4194304,
+        "samples": [
+          {
+            "exit": 0,
+            "processMs": 165.16854194924235,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 91.022834,
+              "peakRssKiB": 95632,
+              "inputBytes": 4194310
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 163.00891700666398,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 89.69470799999999,
+              "peakRssKiB": 95792,
+              "inputBytes": 4194310
+            }
+          },
+          {
+            "exit": 0,
+            "processMs": 162.9075410310179,
+            "heapOOM": false,
+            "result": {
+              "parseMs": 89.12258399999999,
+              "peakRssKiB": 95728,
+              "inputBytes": 4194310
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "combiningMarks": {
+    "runtime": "v26.9.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "fixture": "e followed by U+0301 marks",
+    "warmup": 1,
+    "samples": 5,
+    "rows": [
+      {
+        "marks": 100000,
+        "width": 22,
+        "before": {
+          "samplesMs": [
+            7.995833000000005, 8.17070799999999, 8.152833000000044, 8.124499999999955,
+            7.968250000000012
+          ],
+          "medianMs": 8.124499999999955,
+          "outputUnits": 100001,
+          "outputBytes": 200001
+        },
+        "after": {
+          "samplesMs": [
+            0.2061249999999859, 0.20554200000003675, 0.21195899999997891, 0.20529199999998582,
+            0.2059579999999528
+          ],
+          "medianMs": 0.2059579999999528,
+          "outputUnits": 1,
+          "outputBytes": 3
+        }
+      },
+      {
+        "marks": 500000,
+        "width": 22,
+        "before": {
+          "samplesMs": [
+            40.44145800000001, 39.262958000000026, 40.322374999999965, 40.36712499999999, 40.042417
+          ],
+          "medianMs": 40.322374999999965,
+          "outputUnits": 500001,
+          "outputBytes": 1000001
+        },
+        "after": {
+          "samplesMs": [
+            1.0107920000000377, 1.030917000000045, 2.0040420000000267, 1.0122089999999844,
+            1.0134590000000117
+          ],
+          "medianMs": 1.0134590000000117,
+          "outputUnits": 1,
+          "outputBytes": 3
+        }
+      }
+    ]
+  }
+}

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as fc from 'fast-check';
 import {
+  createToolFilter,
   fitViewport,
   initialState,
   matchingTools,
@@ -22,6 +23,33 @@ await test('search consumes q and navigation letters as text; Escape resets sele
   assert.equal(reduceKey(state, key('return'), 0).searching, false);
   assert.deepEqual(reduceKey(state, key('escape'), 0), initialState);
   assert.equal(reduceKey(initialState, key('q'), 12).quitting, true);
+});
+
+await test('filter cache reuses normalized queries and preserves original rows and order', () => {
+  let nameReads = 0;
+  const tools = [
+    {
+      get name(): string {
+        nameReads += 1;
+        return '\u001b[31mDocker';
+      },
+      count: 3,
+      share: 0.75,
+    },
+    { name: 'git', count: 1, share: 0.25 },
+  ];
+  const filter = createToolFilter(tools);
+  assert.equal(filter(''), tools);
+  assert.equal(nameReads, 0);
+  const docker = filter('dock');
+  assert.deepEqual(docker, [tools[0]]);
+  assert.equal(filter('DOCK'), docker);
+  assert.equal(filter(''), tools);
+  assert.equal(filter('dock'), docker);
+  assert.deepEqual(filter('git'), [tools[1]]);
+  assert.deepEqual(filter('missing'), []);
+  assert.deepEqual(filter('dock'), docker);
+  assert.equal(nameReads, 1);
 });
 
 await test('keyboard navigation supports arrows, vim keys, and both ends', () => {

@@ -4,7 +4,7 @@ import metadata from '../package.json' with { type: 'json' };
 import { analyze } from './analyze.js';
 import { demoHistory } from './demo.js';
 import { formatReport, type OutputFormat } from './export.js';
-import { parseHistory } from './history.js';
+import { iterateHistory } from './history.js';
 import { loadHistory } from './io.js';
 import { HELP, parseOptions, type Options } from './options.js';
 import { safeText, type RenderOptions } from './render.js';
@@ -59,7 +59,7 @@ async function run(options: Options): Promise<void> {
     throw new Error('interactive mode requires a terminal; omit -i to print a report');
   }
   const source = options.demo ? undefined : await loadHistory(options);
-  const entries = source ? parseHistory(source.text, source.shell) : demoHistory();
+  const entries = source ? iterateHistory(source.text, source.shell) : demoHistory();
   const report = analyze(entries, options.since === undefined ? {} : { since: options.since });
   const label = source ? `${source.shell}: ${source.path}` : 'sample history';
   await writeReport(report, options, renderOptions(options, label));

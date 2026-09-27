@@ -35,5 +35,23 @@ rendered content, interaction, exit status, and terminal restoration. Source tes
 and non-TTY rejection tests do not replace this check. The CI workflow contains
 the current runtime/platform matrix and commands.
 
-Use [the release procedure](../../../docs/releases.md) for release work. Keep
-changes to this skill limited to demonstrated project requirements or failures.
+## Automatic releases
+
+Read [the release procedure](../../../docs/releases.md) before changing release
+code or merging. Merging to `main` starts publication. Do not edit version numbers,
+maintain a changelog, or prepare a version-editing PR. Tags supply release versions;
+source manifests keep the development placeholder. The generated lock contains
+the actual contract, not a release number.
+
+Changes to contract extraction must test the preceding released source as well
+as the candidate. Keep classification deterministic and conservative; do not
+claim a source fingerprint proves semantic compatibility. Cover packaging fields
+and artifact-producing helper changes, and preserve semantically ordered maps
+such as conditional exports. A retry must recover
+the reserved archives and verify their hashes. Never rebuild different bytes
+under an existing tag or bypass a failed contract check.
+
+For performance changes, file the measured issue first, retain a reproducible
+before/after comparison, and add a result-checking time or memory regression.
+Use [the performance audit](../../../docs/performance.md) for fixtures and limits.
+Keep changes to this skill limited to demonstrated project requirements.

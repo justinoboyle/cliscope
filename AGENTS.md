@@ -22,4 +22,6 @@ Apply these instructions only to work in this repository.
   a regression. Record observed behavior, evidence, and remaining limits.
 
 Use [the release procedure](docs/releases.md) for version, merge, and tag work.
-Do not move a published tag or reuse a published npm version.
+Merging starts automatic publication; PRs do not carry version or changelog edits.
+The generated lock records the contract; tags record versions. Do not move a
+published tag or reuse a published package version.

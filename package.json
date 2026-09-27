@@ -1,6 +1,6 @@
 {
   "name": "cliscope",
-  "version": "0.2.1",
+  "version": "0.0.0-development",
   "description": "Print command counts and activity graphs from shell history",
   "homepage": "https://github.com/justinoboyle/cliscope#readme",
   "bugs": {
@@ -35,7 +35,9 @@
     "prepack": "npm run check && npm test && npm run build",
     "prepare": "node scripts/install-hooks.mjs",
     "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "bench": "node --import tsx scripts/benchmark.ts"
+    "bench": "node --import tsx scripts/benchmark.ts",
+    "package:github": "node --import tsx scripts/package-github.ts",
+    "release": "node --import tsx scripts/release.ts"
   },
   "dependencies": {
     "bun": "1.4.2"
@@ -50,6 +52,7 @@
     "oxlint": "1.85.0",
     "oxlint-tsgolint": "7.0.2003",
     "string-width": "8.3.0",
+    "tar": "7.5.22",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "zod": "4.6.5"

@@ -78,60 +78,78 @@ function stopsUnwrapping(wrapper: string, option: string): boolean {
   return wrapper === 'sudo' && /^-[^-]*[elLvV]/.test(option);
 }
 
-function unwrapOptions(
-  words: readonly Word[],
-  start: number,
-  wrapper: string,
-  takesValue: ReadonlySet<string>,
-): number | undefined {
-  let index = start;
-  while (index < words.length) {
-    const option = words[index]?.text ?? '';
-    if (option === '--') return index + 1;
-    if (!option.startsWith('-') || option === '-') return index;
-    if (stopsUnwrapping(wrapper, option)) return undefined;
-    const key = option.split('=')[0] ?? option;
-    index += takesValue.has(key) && !option.includes('=') ? 2 : 1;
+/** Resolve only the command prefix; argument words never accumulate. */
+class Invocation {
+  private phase: 'command' | 'options' | 'value' | 'duration' | 'done' = 'command';
+  private wrapper = '';
+  private takesValue: ReadonlySet<string> = new Set();
+  name: string | undefined;
+
+  read(word: Word): void {
+    switch (this.phase) {
+      case 'done':
+        return;
+      case 'value':
+        this.phase = 'options';
+        return;
+      case 'duration':
+        this.phase = 'command';
+        return;
+      case 'options':
+        this.readOption(word);
+        return;
+      case 'command':
+        this.readCommand(word);
+    }
   }
-  return index;
-}
 
-type InvocationStep =
-  | { readonly kind: 'done'; readonly name: string | undefined }
-  | { readonly kind: 'next'; readonly index: number };
-
-function resolveInvocation(words: readonly Word[], index: number): InvocationStep {
-  const word = words[index];
-  if (word === undefined) return { kind: 'done', name: undefined };
-  if (isPrefix(word)) return { kind: 'next', index: index + 1 };
-  if (!isCommand(word)) return { kind: 'done', name: undefined };
-  const name = baseName(word.text);
-  const takesValue = Object.hasOwn(wrapperOptions, name) ? wrapperOptions[name] : undefined;
-  if (takesValue === undefined) return { kind: 'done', name: name || undefined };
-  const optionEnd = unwrapOptions(words, index + 1, name, takesValue);
-  if (optionEnd === undefined) return { kind: 'done', name };
-  // timeout's duration precedes the wrapped command.
-  const next = optionEnd + (name === 'timeout' ? 1 : 0);
-  return next >= words.length ? { kind: 'done', name } : { kind: 'next', index: next };
-}
-
-function toolFromWords(words: readonly Word[]): string | undefined {
-  let index = 0;
-  while (index < words.length) {
-    const step = resolveInvocation(words, index);
-    if (step.kind === 'done') return step.name;
-    index = step.index;
+  private readCommand(word: Word): void {
+    this.name = undefined;
+    if (isPrefix(word)) return;
+    this.phase = 'done';
+    if (!isCommand(word)) return;
+    const name = baseName(word.text);
+    this.name = name || undefined;
+    const takesValue = Object.hasOwn(wrapperOptions, name) ? wrapperOptions[name] : undefined;
+    if (takesValue === undefined) return;
+    this.wrapper = name;
+    this.takesValue = takesValue;
+    this.phase = 'options';
   }
-  return undefined;
+
+  private readOption(word: Word): void {
+    const option = word.text;
+    if (option === '--') {
+      this.phase = this.wrapper === 'timeout' ? 'duration' : 'command';
+    } else if (!option.startsWith('-') || option === '-') {
+      this.phase = 'command';
+      if (this.wrapper !== 'timeout') this.readCommand(word);
+    } else if (stopsUnwrapping(this.wrapper, option)) {
+      this.phase = 'done';
+    } else {
+      const key = option.split('=')[0] ?? option;
+      if (this.takesValue.has(key) && !option.includes('=')) this.phase = 'value';
+    }
+  }
 }
 
-function unsupportedSyntax(tokens: readonly Token[]): boolean {
-  return tokens.some((token, index) => {
-    if (token.kind === 'operator') return token.text === '<<';
-    if (tokens[index + 1]?.text === '(' && tokens[index + 2]?.text === ')') return true;
-    const commandPosition = index === 0 || tokens[index - 1]?.kind === 'operator';
-    return !token.quoted && commandPosition && ['function', 'case', 'switch'].includes(token.text);
-  });
+/** Keep only the lookbehind needed to reject unsupported record syntax. */
+class SyntaxGuard {
+  private previous: Token | undefined;
+  private beforePrevious: Token | undefined;
+
+  accepts(token: Token): boolean {
+    const functionDefinition =
+      this.beforePrevious?.kind === 'word' && this.previous?.text === '(' && token.text === ')';
+    const commandPosition = this.previous === undefined || this.previous.kind === 'operator';
+    const unsupported =
+      token.kind === 'operator'
+        ? token.text === '<<'
+        : !token.quoted && commandPosition && ['function', 'case', 'switch'].includes(token.text);
+    this.beforePrevious = this.previous;
+    this.previous = token;
+    return !functionDefinition && !unsupported;
+  }
 }
 
 /**
@@ -140,28 +158,50 @@ function unsupportedSyntax(tokens: readonly Token[]): boolean {
  * command names are not expanded. Function definitions and heredocs are skipped
  * conservatively; this is intentionally not a full shell-program interpreter.
  */
-export function extractTools(command: string): readonly string[] {
+function scanTools(command: string, onTool: (name: string) => void): boolean {
   const tokens = tokenize(command);
-  if (unsupportedSyntax(tokens)) return [];
-  const tools: string[] = [];
-  let words: Word[] = [];
+  const syntax = new SyntaxGuard();
+  let invocation = new Invocation();
   let redirect = false;
   const flush = (): void => {
-    const tool = toolFromWords(words);
-    if (tool !== undefined) tools.push(tool);
-    words = [];
+    if (invocation.name !== undefined) onTool(invocation.name);
+    invocation = new Invocation();
     redirect = false;
   };
   for (const token of tokens) {
+    if (!syntax.accepts(token)) return false;
     if (token.kind === 'operator') {
       if (/[<>]/.test(token.text)) redirect = true;
       else flush();
     } else if (redirect) {
       redirect = false;
     } else {
-      words.push(token);
+      invocation.read(token);
     }
   }
-  flush();
-  return tools;
+  if (!tokens.complete) return false;
+  if (invocation.name !== undefined) onTool(invocation.name);
+  return true;
+}
+
+export function extractTools(command: string): readonly string[] {
+  const tools: string[] = [];
+  const valid = scanTools(command, (name) => tools.push(name));
+  return valid ? tools : [];
+}
+
+export interface ToolCounts {
+  readonly totalInvocations: number;
+  readonly counts: ReadonlyMap<string, number>;
+}
+
+/** Publish counts only after the complete record passes syntax validation. */
+export function countTools(command: string): ToolCounts {
+  const counts = new Map<string, number>();
+  let totalInvocations = 0;
+  const valid = scanTools(command, (name) => {
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+    totalInvocations++;
+  });
+  return valid ? { totalInvocations, counts } : { totalInvocations: 0, counts: new Map() };
 }
