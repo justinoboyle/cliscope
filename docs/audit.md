@@ -117,3 +117,29 @@ and workflow triggers without GitHub mutations.
 main-push CI trigger. The trigger regression proves the release workflow owns that
 matrix while PR, merge-queue, and reusable CI remain enabled. This is structural
 proof of duplicate work removed, not a measured wall-clock improvement.
+
+## First automatic release recovery
+
+[#32](https://github.com/justinoboyle/cliscope/issues/32) exposed a draft-visibility
+gap after creation. [Asset upload](../scripts/release-artifacts.ts) now uses the
+validated creation response and ID instead of rediscovering the draft. The
+[regression](../test/release-recovery.test.ts) hides the draft from subsequent
+lookups and rejects invalid creation responses before upload.
+
+[#33](https://github.com/justinoboyle/cliscope/issues/33) exposed publication
+dispatch being skipped after successful recovery because builds were skipped.
+The [workflow regression](../test/release-handoff.test.ts) checks an explicit
+dispatch condition requiring reservation success; all six handoff tests passed.
+
+[Run 36284594844](https://github.com/justinoboyle/cliscope/actions/runs/36284594844)
+recovered the original artifacts with all nine asset digests matching and the tag
+unchanged. Publication still required a manual dispatch at that tag. These fixes
+have not yet demonstrated a complete unattended release; the
+[release procedure](releases.md#publication-and-recovery) remains the single owner
+of recovery instructions.
+
+[#34](https://github.com/justinoboyle/cliscope/issues/34) records successful npm
+submission whose exact reserved integrity became visible roughly three minutes
+later, after confirmation timed out; [visibility regressions](../test/release-state.test.ts)
+cover delayed matches while retaining immediate rejection of conflicts and
+authorization failures.

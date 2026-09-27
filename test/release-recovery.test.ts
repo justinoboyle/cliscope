@@ -18,6 +18,7 @@ const execute = promisify(execFile);
 // Release orchestration runs on Ubuntu. This fixture replaces gh, so no network mutation occurs.
 const fakeGh = `#!/usr/bin/env node
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 const args = process.argv.slice(2);
 const fixture = JSON.parse(readFileSync(process.env.RELEASE_FIXTURE, 'utf8'));
@@ -25,10 +26,21 @@ appendFileSync(process.env.RELEASE_CALLS, JSON.stringify(args) + '\\n');
 const { reservation } = fixture;
 if (args[0] === 'api') {
   const path = args[1];
-  if (path.includes('/git/ref/')) console.log(JSON.stringify({ object: { type: 'tag', sha: 'tagobject' } }));
+  if (path.startsWith('https://uploads.github.com/')) {
+    if (!path.includes('/releases/' + (fixture.createdId ?? 1) + '/assets?')) throw Error('Wrong release ID');
+    const name = new URL(path).searchParams.get('name');
+    const bytes = readFileSync(args[args.indexOf('--input') + 1]);
+    console.log(JSON.stringify({ name, digest: 'sha256:' + createHash('sha256').update(bytes).digest('hex') }));
+  } else if (path.endsWith('/releases/generate-notes')) {
+    if (!args.includes('previous_tag_name=' + reservation.previousTag)) throw Error('Wrong release notes baseline');
+    console.log(JSON.stringify({ body: 'Generated fixture notes' }));
+  } else if (path.endsWith('/releases') && args.includes('POST')) {
+    if (!args.includes('body=Generated fixture notes') || !args.includes('draft=true')) throw Error('Wrong draft body');
+    console.log(JSON.stringify({ id: fixture.createdId ?? 1, draft: fixture.createdDraft ?? true, tag_name: fixture.createdTag ?? reservation.tag, assets: [] }));
+  } else if (path.includes('/git/ref/')) console.log(JSON.stringify({ object: { type: 'tag', sha: 'tagobject' } }));
   else if (path.includes('/git/tags/')) console.log(JSON.stringify({ message: JSON.stringify(reservation), object: { type: 'commit', sha: reservation.sourceSha } }));
   else if (path.includes('/releases/tags/')) { console.error('gh: Not Found (HTTP 404)'); process.exit(1); }
-  else if (path.includes('/releases?')) console.log(JSON.stringify([{ id: 1, draft: true, tag_name: reservation.tag, assets: fixture.assets ?? [] }]));
+  else if (path.includes('/releases?')) console.log(JSON.stringify(fixture.hideRelease ? [] : [{ id: 1, draft: true, tag_name: reservation.tag, assets: fixture.assets ?? [] }]));
   else throw Error('Unexpected API call: ' + path);
 } else if (args[0] === 'run' && args[1] === 'download') {
   if (args[2] !== reservation.runId) throw Error('Attempted recovery from a different workflow run');
@@ -39,7 +51,7 @@ if (args[0] === 'api') {
     : group === 'github-package' ? 'justinoboyle-cliscope-' + version + '.tgz' : group + '.tar.gz';
   mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, name), fixture.bytes);
-} else if (!(args[0] === 'release' && args[1] === 'upload')) throw Error('Unexpected gh call');
+} else throw Error('Unexpected gh call');
 `;
 
 const fakeNpm = `#!/usr/bin/env node
@@ -142,9 +154,51 @@ async function checkExistingAssets(
   }
   const calls = (await readCalls(callsPath)).slice(before);
   assert.ok(
-    calls.every((call) => call[0] === 'api'),
+    calls.every((call) => call[0] === 'api' && !call.includes('POST')),
     'Existing assets must not download or upload',
   );
+}
+
+async function checkCreatedDraft(
+  planPath: string,
+  artifacts: string,
+  env: NodeJS.ProcessEnv,
+  fixture: { readonly reservation: Reservation; readonly bytes: string },
+): Promise<void> {
+  const fixturePath = env['RELEASE_FIXTURE'];
+  const callsPath = env['RELEASE_CALLS'];
+  assert.ok(fixturePath && callsPath);
+  const args = [
+    '--import',
+    'tsx',
+    'scripts/release.ts',
+    'reserve',
+    '--plan',
+    planPath,
+    '--artifacts',
+    artifacts,
+  ];
+  const before = (await readCalls(callsPath)).length;
+  await writeFile(fixturePath, JSON.stringify({ ...fixture, hideRelease: true, createdId: 99 }));
+  await execute(process.execPath, args, { env });
+  const calls = (await readCalls(callsPath)).slice(before);
+  assert.equal(calls.filter((call) => call[1]?.includes('/releases?')).length, 1);
+  assert.equal(calls.filter((call) => call[1]?.endsWith('/releases')).length, 1);
+  assert.equal(calls.filter((call) => call[1]?.includes('/releases/99/assets?')).length, 9);
+  for (const invalid of [
+    { createdId: 0 },
+    { createdId: 99, createdTag: 'v9.0.0' },
+    { createdId: 99, createdDraft: false },
+  ]) {
+    const offset: number = (await readCalls(callsPath)).length;
+    await writeFile(fixturePath, JSON.stringify({ ...fixture, hideRelease: true, ...invalid }));
+    await assert.rejects(execute(process.execPath, args, { env }), /invalid_value|too_small/);
+    assert.ok(
+      (await readCalls(callsPath))
+        .slice(offset)
+        .every((call) => !call[1]?.startsWith('https://uploads.github.com/')),
+    );
+  }
 }
 
 await test(
@@ -221,14 +275,19 @@ await test(
       assert.equal(downloads.length, 7);
       assert.ok(downloads.every((args) => args[2] === '123'));
       assert.equal(
-        invocations.filter((args) => args[0] === 'release' && args[1] === 'upload').length,
+        invocations.filter((args) => args[1]?.startsWith('https://uploads.github.com/')).length,
         9,
       );
-      assert.ok(invocations.every((args) => !args.includes('POST')));
+      assert.ok(
+        invocations.every(
+          (args) => !args.includes('POST') || args[1]?.startsWith('https://uploads.github.com/'),
+        ),
+      );
       const restored = await readFile(join(artifacts, 'release-contract.json'));
       assert.equal(digestArchive(restored).sha256, plan.contractHash);
       await checkRepeatedPublication(planPath, artifacts, env);
       await checkExistingAssets(planPath, artifacts, env, { reservation, bytes });
+      await checkCreatedDraft(planPath, artifacts, env, { reservation, bytes });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

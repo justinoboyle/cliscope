@@ -66,11 +66,12 @@ export async function confirmPublication(
     await delay(10_000);
   },
 ): Promise<void> {
-  for (let attempt = 0; attempt < 13; attempt++) {
+  const intervals = 30;
+  for (let attempt = 0; attempt <= intervals; attempt++) {
     if (publicationAction(expected, await read()) === 'skip') return;
-    if (attempt < 12) await pause();
+    if (attempt < intervals) await pause();
   }
-  throw new Error('Published registry metadata did not become visible within two minutes');
+  throw new Error('Published registry metadata did not become visible within five minutes');
 }
 
 export function assertPublishSource(plan: ReleasePlan, environment: NodeJS.ProcessEnv): void {
@@ -108,7 +109,8 @@ export async function publishRegistry(
     const args = ['publish', path, '--ignore-scripts', '--registry', url, '--tag', 'latest'];
     if (registry === 'npm') args.push('--access', 'public', '--provenance');
     else args.push('--provenance=false');
-    await run('npm', args);
+    const submission = await run('npm', args);
+    if (submission) console.log(submission);
   }
   await confirmPublication(expected.integrity, async () => registryIntegrity(registry, plan.tag));
   console.log(

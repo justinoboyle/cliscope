@@ -2,7 +2,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { canonicalContract } from './release-contract.js';
-import { api, findRelease, remoteReservation, repository, run } from './release-io.js';
+import {
+  api,
+  findRelease,
+  releaseSchema,
+  remoteReservation,
+  repository,
+  run,
+  type GitHubRelease,
+} from './release-io.js';
 import {
   assertSameRelease,
   assertBuildSource,
@@ -62,22 +70,39 @@ async function auxiliaryFiles(reservation: Reservation, directory: string): Prom
   );
 }
 
-async function ensureDraft(repo: string, reservation: Reservation): Promise<void> {
-  if (await findRelease(repo, reservation.tag)) return;
-  await run('gh', [
-    'release',
-    'create',
-    reservation.tag,
-    '--repo',
-    repo,
-    '--verify-tag',
-    '--draft',
-    '--title',
-    reservation.tag,
-    '--generate-notes',
-    '--notes-start-tag',
-    reservation.previousTag,
-  ]);
+async function ensureDraft(repo: string, reservation: Reservation): Promise<GitHubRelease> {
+  const existing = await findRelease(repo, reservation.tag);
+  if (existing) return existing;
+  const notes = z
+    .object({ body: z.string() })
+    .parse(
+      await api(`repos/${repo}/releases/generate-notes`, [
+        '--method',
+        'POST',
+        '-f',
+        `tag_name=${reservation.tag}`,
+        '-f',
+        `previous_tag_name=${reservation.previousTag}`,
+      ]),
+    );
+  return releaseSchema
+    .extend({ tag_name: z.literal(reservation.tag), draft: z.literal(true) })
+    .parse(
+      await api(`repos/${repo}/releases`, [
+        '--method',
+        'POST',
+        '-f',
+        `tag_name=${reservation.tag}`,
+        '-f',
+        `target_commitish=${reservation.sourceSha}`,
+        '-f',
+        `name=${reservation.tag}`,
+        '-f',
+        `body=${notes.body}`,
+        '-F',
+        'draft=true',
+      ]),
+    );
 }
 
 /** Existing assets are checked, never overwritten, including during a retry. */
@@ -85,25 +110,29 @@ async function uploadAssets(
   repo: string,
   reservation: Reservation,
   directory: string,
+  release: GitHubRelease,
 ): Promise<void> {
-  const release = await findRelease(repo, reservation.tag);
-  if (!release) throw new Error('Reserved GitHub Release is missing');
   const names = [...requiredArchives(reservation), 'SHA256SUMS', 'release-contract.json'];
   for (const name of names) {
     const asset = release.assets.find((entry) => entry.name === name);
+    const expected = `sha256:${reservation.archives[name]?.sha256 ?? digestArchive(await readFile(join(directory, name))).sha256}`;
     if (asset) {
-      const expected = digestArchive(await readFile(join(directory, name))).sha256;
-      if (asset.digest !== `sha256:${expected}`)
+      if (asset.digest !== expected)
         throw new Error(`Existing release asset differs from the reservation: ${name}`);
     } else {
-      await run('gh', [
-        'release',
-        'upload',
-        reservation.tag,
-        join(directory, name),
-        '--repo',
-        repo,
-      ]);
+      z.object({ name: z.literal(name), digest: z.literal(expected) }).parse(
+        await api(
+          `https://uploads.github.com/repos/${repo}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`,
+          [
+            '--method',
+            'POST',
+            '--header',
+            'Content-Type: application/octet-stream',
+            '--input',
+            join(directory, name),
+          ],
+        ),
+      );
     }
   }
 }
@@ -134,8 +163,7 @@ export async function reserveRelease(plan: ReleasePlan, directory: string): Prom
     await createTag(repo, reservation);
   }
   await auxiliaryFiles(reservation, directory);
-  await ensureDraft(repo, reservation);
-  await uploadAssets(repo, reservation, directory);
+  await uploadAssets(repo, reservation, directory, await ensureDraft(repo, reservation));
 }
 
 function artifactGroup(name: string): string {

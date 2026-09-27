@@ -118,6 +118,7 @@ jobs:
   dispatch:
     name: Publish from the reserved tag
     needs: reserve
+    if: always() && needs.reserve.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
