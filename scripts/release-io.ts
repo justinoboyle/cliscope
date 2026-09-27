@@ -83,7 +83,7 @@ export function isNotFound(error: unknown): boolean {
   return parsed.success && parsed.data.stderr.includes('(HTTP 404)');
 }
 
-const releaseSchema = z.object({
+export const releaseSchema = z.object({
   id: z.number().int().positive(),
   draft: z.boolean(),
   tag_name: z.string(),

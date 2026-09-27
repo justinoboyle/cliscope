@@ -140,6 +140,16 @@ await test('main pushes use the release matrix once; PR and merge queue CI remai
   assert.equal(Object.hasOwn(callable.inputs, 'source-ref'), false);
 });
 
+await test('publication dispatch accepts successful recovery despite skipped builds, and requires reservation success', async () => {
+  const raw: unknown = parse(await readFile('.github/workflows/release.yml', 'utf8'));
+  const workflow = z
+    .object({
+      jobs: z.object({ dispatch: z.object({ needs: z.literal('reserve'), if: z.string() }) }),
+    })
+    .parse(raw);
+  assert.equal(workflow.jobs.dispatch.if, "always() && needs.reserve.result == 'success'");
+});
+
 await test(
   'handoff creates the source ref once and reuses it without moving it',
   posixOnly,
