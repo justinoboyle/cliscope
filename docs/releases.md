@@ -74,14 +74,16 @@ Its global concurrency group serializes work; Git history retains the queue when
 GitHub replaces a pending workflow run.
 
 1. Compare contracts and select the next version.
-2. Stamp and verify the selected commit with the complete native and installed
-   package matrices.
-3. Create an immutable annotated tag containing the source commit, contract,
-   classification reasons, originating run, and hashes of the tested archives.
-   Copy those archives to a draft GitHub Release.
-4. Dispatch publication at that tag. This makes npm provenance identify the
-   exact source used to build the package, even when more commits have merged.
-5. Publish both registries, install their published versions outside the
+2. If the selected commit differs from the running workflow, dispatch planning at
+   immutable `release-build/SOURCE_SHA`. That run replans, then uses its own workflow
+   and checkout. Build tags carry no version.
+3. Stamp and verify that source with the native and installed-package matrices.
+   The contract's platform list also determines the required native archives.
+4. Require the [source check](../scripts/release-model.ts) before creating the
+   immutable SemVer tag. Its annotation binds the contract and tested archives to
+   that source and build run. Copy the archives to a draft GitHub Release.
+5. Dispatch publication at that tag so npm provenance identifies the built source.
+6. Publish both registries, install their published versions outside the
    checkout, and run CLI and terminal tests. Publish the GitHub Release only
    after both registry jobs pass. Continue with the next queued commit.
 
@@ -95,12 +97,13 @@ For a failed release, rerun the `Release` workflow on `main` with phase `plan`:
 gh workflow run release.yml --ref main -f phase=plan
 ```
 
-An unfinished tag is resumed before selecting a new version. Recovery uses the
-reserved draft assets or the originating run's artifacts and checks their
+An unfinished reservation resumes without another build or source handoff.
+Recovery uses the reserved draft assets or the originating run's artifacts and checks their
 hashes. Matching registry publications are skipped; conflicting bytes fail.
 Missing original archives fail rather than being rebuilt under an existing tag.
 Registry metadata is allowed a bounded propagation delay after publishing.
-Never move a tag, overwrite an asset, or delete a published package to retry.
+Never move a build or release tag, overwrite an asset, or delete a published
+package to retry.
 
 ## Authentication
 
@@ -110,7 +113,9 @@ uses OIDC and provenance, with no stored npm token. The filename remains
 `release.yml` across planning and tag publication.
 
 GitHub Packages uses a job-scoped `GITHUB_TOKEN` with `packages: write`.
-Tag reservation, draft recovery, and release completion receive `contents: write`;
+Build handoff receives `contents: write` and `actions: write` to create its ref
+and dispatch at that source. Tag reservation, draft recovery, and release completion
+receive `contents: write`;
 GitHub requires push access to read draft assets. Publication dispatch and the
 finalization job's queue continuation receive `actions: write`. Ordinary pull-request checks remain
 read-only. No bot commit, release PR, personal token, or main-protection bypass

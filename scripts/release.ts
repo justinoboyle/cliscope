@@ -5,9 +5,20 @@ import { z } from 'zod';
 import { stampVersion } from './release-contract.js';
 import { recoverRelease, reserveRelease } from './release-artifacts.js';
 import { output, readJson, remoteReservation, repository } from './release-io.js';
-import { releaseIdentity, validatePlan, type Plan, type ReleasePlan } from './release-model.js';
+import {
+  assertBuildSource,
+  releaseIdentity,
+  validatePlan,
+  type Plan,
+  type ReleasePlan,
+} from './release-model.js';
 import { planRelease } from './release-plan.js';
-import { dispatchPublication, finalizeRelease, publishRegistry } from './release-publish.js';
+import {
+  dispatchBuild,
+  dispatchPublication,
+  finalizeRelease,
+  publishRegistry,
+} from './release-publish.js';
 
 function required(value: string | undefined, flag: string): string {
   if (!value) throw new Error(`Missing --${flag}`);
@@ -44,7 +55,16 @@ async function main(): Promise<void> {
     },
   });
   const command = z
-    .enum(['plan', 'reserve', 'recover', 'dispatch', 'publish', 'finalize', 'stamp'])
+    .enum([
+      'plan',
+      'reserve',
+      'recover',
+      'dispatch',
+      'dispatch-build',
+      'publish',
+      'finalize',
+      'stamp',
+    ])
     .parse(positionals[0]);
   if (positionals.length !== 1) throw new Error('Expected one release command');
   if (command === 'stamp') {
@@ -52,7 +72,10 @@ async function main(): Promise<void> {
     return;
   }
   if (command === 'plan') {
-    await savePlan(await planRelease(), required(values.output, 'output'));
+    const plan = await planRelease();
+    if (plan.kind === 'release' && !plan.resume && plan.sourceSha === process.env['GITHUB_SHA'])
+      assertBuildSource(plan, process.env);
+    await savePlan(plan, required(values.output, 'output'));
     return;
   }
   const plan =
@@ -69,6 +92,9 @@ async function main(): Promise<void> {
       return;
     case 'dispatch':
       await dispatchPublication(plan);
+      return;
+    case 'dispatch-build':
+      await dispatchBuild(plan);
       return;
     case 'publish':
       await publishRegistry(

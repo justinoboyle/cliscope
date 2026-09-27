@@ -101,3 +101,19 @@ comments and display-name edits do not. The same extractor successfully read
 actual `v0.2.1` and candidate sources, retaining the same platform list. The
 23-test contract pass covered inherited settings, unsupported structures, and
 breaking classification. See [contract rules](releases.md#contract-lock).
+
+[#29](https://github.com/justinoboyle/cliscope/issues/29) uses the logical filename
+`tsconfig.json` for JSONC diagnostics while retaining native paths for file I/O.
+The [configuration regression](../test/release-contract.test.ts) checks malformed
+JSONC without depending on Windows path spelling.
+
+[#30](https://github.com/justinoboyle/cliscope/issues/30) binds queued builds to the
+selected source's workflow; see the [release procedure](releases.md#publication-and-recovery).
+Five [handoff and CI regressions](../test/release-handoff.test.ts) check revision
+identity, immutable ref reuse, conflicting/inaccessible refs, resume behavior,
+and workflow triggers without GitHub mutations.
+
+[#31](https://github.com/justinoboyle/cliscope/issues/31) removes the separate
+main-push CI trigger. The trigger regression proves the release workflow owns that
+matrix while PR, merge-queue, and reusable CI remain enabled. This is structural
+proof of duplicate work removed, not a measured wall-clock improvement.

@@ -37,6 +37,15 @@ export type Plan = z.infer<typeof planSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
 export type Archive = z.infer<typeof archiveSchema>;
 
+/** The selected source must also supply the running build workflow. */
+export function assertBuildSource(plan: ReleasePlan, environment: NodeJS.ProcessEnv): void {
+  if (
+    environment['GITHUB_SHA'] !== plan.sourceSha ||
+    environment['GITHUB_WORKFLOW_SHA'] !== plan.sourceSha
+  )
+    throw new Error('Release source and build workflow must match the selected commit');
+}
+
 export function digestArchive(bytes: Uint8Array): Archive {
   return {
     sha256: createHash('sha256').update(bytes).digest('hex'),

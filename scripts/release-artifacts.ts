@@ -5,6 +5,7 @@ import { canonicalContract } from './release-contract.js';
 import { api, findRelease, remoteReservation, repository, run } from './release-io.js';
 import {
   assertSameRelease,
+  assertBuildSource,
   checksumFile,
   digestArchive,
   latestStableTag,
@@ -109,6 +110,7 @@ async function uploadAssets(
 
 export async function reserveRelease(plan: ReleasePlan, directory: string): Promise<void> {
   if (plan.resume) await recoverRelease(plan, directory);
+  else assertBuildSource(plan, process.env);
   const repo = await repository();
   const archives = await archiveDigests(plan, directory);
   let reservation = await remoteReservation(repo, plan.tag);

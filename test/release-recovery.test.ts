@@ -193,6 +193,7 @@ await test(
         GH_REPO: 'justinoboyle/cliscope',
         GITHUB_RUN_ID: '999',
         GITHUB_SHA: plan.sourceSha,
+        GITHUB_WORKFLOW_SHA: plan.sourceSha,
         GITHUB_REF: `refs/tags/${plan.tag}`,
         RELEASE_FIXTURE: fixture,
         RELEASE_CALLS: calls,

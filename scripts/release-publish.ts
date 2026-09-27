@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
-import { api, findRelease, remoteReservation, repository, run } from './release-io.js';
+import { api, findRelease, isNotFound, remoteReservation, repository, run } from './release-io.js';
 import {
   assertSameRelease,
   assertReleaseAssets,
@@ -116,18 +116,48 @@ export async function publishRegistry(
   );
 }
 
-export async function dispatchPublication(plan: ReleasePlan): Promise<void> {
+async function dispatchPhase(repo: string, ref: string, phase: 'plan' | 'publish'): Promise<void> {
   await run('gh', [
     'workflow',
     'run',
     'release.yml',
     '--repo',
-    await repository(),
+    repo,
     '--ref',
-    plan.tag,
+    ref,
     '-f',
-    'phase=publish',
+    `phase=${phase}`,
   ]);
+}
+
+export async function dispatchPublication(plan: ReleasePlan): Promise<void> {
+  await dispatchPhase(await repository(), plan.tag, 'publish');
+}
+
+/** A protected source ref makes the reusable CI workflow immutable too. */
+export async function dispatchBuild(plan: ReleasePlan): Promise<void> {
+  if (plan.resume) throw new Error('Reserved releases must recover their original build');
+  const repo = await repository();
+  const ref = `release-build/${plan.sourceSha}`;
+  let existing: unknown;
+  try {
+    existing = await api(`repos/${repo}/git/ref/tags/${ref}`);
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    await api(`repos/${repo}/git/refs`, [
+      '--method',
+      'POST',
+      '-f',
+      `ref=refs/tags/${ref}`,
+      '-f',
+      `sha=${plan.sourceSha}`,
+    ]);
+    existing = await api(`repos/${repo}/git/ref/tags/${ref}`);
+  }
+  z.object({
+    object: z.object({ type: z.literal('commit'), sha: z.literal(plan.sourceSha) }),
+  }).parse(existing);
+  await dispatchPhase(repo, ref, 'plan');
 }
 
 async function queueNext(repo: string, source: string): Promise<void> {
@@ -138,18 +168,7 @@ async function queueNext(repo: string, source: string): Promise<void> {
     '--count',
     `${source}..origin/main`,
   ]);
-  if (Number(remaining) > 0)
-    await run('gh', [
-      'workflow',
-      'run',
-      'release.yml',
-      '--repo',
-      repo,
-      '--ref',
-      'main',
-      '-f',
-      'phase=plan',
-    ]);
+  if (Number(remaining) > 0) await dispatchPhase(repo, 'main', 'plan');
 }
 
 /** Finalization follows verification at both registries; retrying does not republish. */
