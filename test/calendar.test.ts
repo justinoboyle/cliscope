@@ -110,6 +110,43 @@ await test('calendar aligns quiet dates and out-of-range cells to Monday-based w
   assert.doesNotMatch(output, /[░▒▓█]/u);
 });
 
+await test('calendar peak and quiet cells use only the visible date window', () => {
+  const days = [
+    { date: '2000-01-01', count: 999_999 },
+    { date: '2026-09-01', count: 1 },
+    { date: '2026-09-03', count: 4 },
+  ];
+  const output = renderCalendar(reportFor(days), 80, true);
+  assert.match(output, /peak 4 invocations\/day/u);
+  assert.doesNotMatch(output, /999/u);
+  assert.match(output, /^Wed (?:\. ){11}\.$/mu);
+  assert.match(output, /^Thu (?:\. ){11}4$/mu);
+});
+
+await test('older dated rows do not affect calendar output after its visible window is full', () => {
+  fc.assert(
+    fc.property(
+      fc.array(fc.nat({ max: 1_000 }), { minLength: 100, maxLength: 1_000 }),
+      fc.integer({ min: 1, max: 240 }),
+      fc.boolean(),
+      (counts, width, ascii) => {
+        const days = counts.map((count, index) => ({
+          date: new Date((18_000 + index * 2) * dayMs).toISOString().slice(0, 10),
+          count,
+        }));
+        const first = days[0];
+        assert.ok(first);
+        const recent = [first, ...days.slice(-84)];
+        assert.equal(
+          renderCalendar(reportFor(days), width, ascii),
+          renderCalendar(reportFor(recent), width, ascii),
+        );
+      },
+    ),
+    { numRuns: 300 },
+  );
+});
+
 await test('weekday totals and opportunities agree with an independent bounded calendar oracle', () => {
   fc.assert(
     fc.property(

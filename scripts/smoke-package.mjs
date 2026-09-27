@@ -7,7 +7,9 @@ import { test } from 'node:test';
 const installationArgument = process.argv[2];
 assert.ok(installationArgument, 'Usage: node smoke-package.mjs INSTALL_DIRECTORY');
 const installation = resolve(installationArgument);
-const packageDirectory = join(installation, 'node_modules', 'cliscope');
+const packageName = process.argv[3] ?? 'cliscope';
+assert.ok(['cliscope', '@justinoboyle/cliscope'].includes(packageName), 'Unexpected package name');
+const packageDirectory = join(installation, 'node_modules', packageName);
 /** @type {unknown} */
 const manifest = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'));
 assert.ok(typeof manifest === 'object' && manifest !== null && 'bin' in manifest);
@@ -196,6 +198,24 @@ await test('installed package exports CSV to a new file and refuses to overwrite
   const retry = run(args);
   assert.equal(retry.status, 1);
   assert.match(retry.stderr, /EEXIST/);
+  assert.equal(await readFile(output, 'utf8'), expected);
+});
+
+await test('installed CSV strips terminal controls before quoting and formula neutralization', async () => {
+  const craftedHistory = join(fixtures, 'csv-controls.history');
+  const output = join(fixtures, 'csv-controls.csv');
+  const name = '\u001b]52;c;Zml4dHVyZQ==\u0007=SUM(1,"x")\u001b[2J\u0085';
+  await writeFile(craftedHistory, `'${name}' ignored-argument\n`);
+  const args = ['--history', craftedHistory, '--shell', 'bash', '--csv'];
+  const result = run(args);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, '');
+  const expected = '"tool","count","share"\r\n"\'=SUM(1,""x"")",1,1\r\n';
+  assert.equal(result.stdout, expected);
+  const exported = run([...args, '--output', output]);
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.equal(exported.stdout, '');
+  assert.equal(exported.stderr, '');
   assert.equal(await readFile(output, 'utf8'), expected);
 });
 

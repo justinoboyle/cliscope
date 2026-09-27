@@ -34,10 +34,30 @@ const nextView: Readonly<Record<View, View>> = {
 };
 
 export function matchingTools(tools: readonly ToolStat[], query: string): readonly ToolStat[] {
+  if (query === '') return tools;
   const normalized = query.toLocaleLowerCase('en-US');
   return tools.filter((tool) =>
     safeText(tool.name).toLocaleLowerCase('en-US').includes(normalized),
   );
+}
+
+/** Normalize names lazily, then retain only the most recent filter result. */
+export function createToolFilter(
+  tools: readonly ToolStat[],
+): (query: string) => readonly ToolStat[] {
+  let names: readonly string[] | undefined;
+  let previous = '';
+  let result = tools;
+  return (query: string): readonly ToolStat[] => {
+    if (query === '') return tools;
+    const normalized = query.toLocaleLowerCase('en-US');
+    if (normalized === previous) return result;
+    names ??= tools.map((tool) => safeText(tool.name).toLocaleLowerCase('en-US'));
+    const indexedNames = names;
+    result = tools.filter((_tool, index) => indexedNames[index]?.includes(normalized));
+    previous = normalized;
+    return result;
+  };
 }
 
 /** Keep the selection visible after filtering, movement, or resizing. */

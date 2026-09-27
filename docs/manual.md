@@ -11,8 +11,7 @@ With a global installation or a standalone executable, use `cliscope [options]`.
 ## Description
 
 Read one shell history file and print command counts and activity graphs to
-standard output. The default view shows the ten most frequent tools. Use `-i`
-for an interactive report; interactive mode requires a terminal.
+standard output. Interactive mode requires a terminal.
 
 History is read as text. Stored commands are not executed, and the history file
 is not changed. Reports contain command names and aggregate counts. Names and
@@ -20,26 +19,10 @@ filenames may contain private information.
 
 ## Options
 
-| Option                      | Operation                                                                        |
-| --------------------------- | -------------------------------------------------------------------------------- |
-| `-i`, `--interactive`       | Display an interactive report.                                                   |
-| `-f PATH`, `--history PATH` | Read the specified history file.                                                 |
-| `-s SHELL`, `--shell SHELL` | Select `auto`, `bash`, `zsh`, or `fish`. Default: `auto`.                        |
-| `-n NUMBER`, `--top NUMBER` | Print 1–100 tools in the text report. Default: 10.                               |
-| `--since DATE`              | Include dated entries on or after `YYYY-MM-DD`, in UTC. Exclude undated entries. |
-| `--view VIEW`               | Select `tools`, `calendar`, or `weekdays`. Default: `tools`.                     |
-| `--json`                    | Print the complete report as JSON, including weekday statistics.                 |
-| `--csv`                     | Print every row of the selected view as CSV.                                     |
-| `-o PATH`, `--output PATH`  | Create an output file. Fail if it exists. Use `-` for standard output.           |
-| `--ascii`                   | Draw graphs with ASCII characters.                                               |
-| `--no-color`                | Disable ANSI colors. Also set by `NO_COLOR`.                                     |
-| `--demo`                    | Read synthetic sample history. Do not read a history file.                       |
-| `-h`, `--help`              | Print help.                                                                      |
-| `-v`, `--version`           | Print the version.                                                               |
-
-`--json` and `--csv` are mutually exclusive. Neither can be combined with `-i`.
-`--output` cannot be combined with `-i`, including `--output -`.
-`--demo` cannot be combined with `--history`.
+Run `npx cliscope --help` for flags, defaults, limits, and examples. The
+[option parser](../src/options.ts) owns accepted values and combinations.
+Interactive mode cannot write exports; JSON and CSV are mutually exclusive;
+demo input cannot be combined with a history path.
 
 ## Files
 
@@ -88,13 +71,12 @@ history, not confirmed executions or productivity.
 
 ## Output
 
-JSON includes the full report and weekday statistics. CSV includes every row of
-the selected view. `--top` limits text rows only. Calendar CSV contains the dated
-rows present in the report; the drawn calendar fills gaps with zero.
+Calendar CSV contains the dated rows present in the report; the drawn calendar
+fills gaps with zero.
 
-CSV quotes text fields and prefixes values that could be interpreted as
-spreadsheet formulas. JSON escapes control characters. Printed labels and paths
-have terminal control sequences removed.
+CSV removes terminal controls, quotes text fields, and prefixes values that could
+be interpreted as spreadsheet formulas. JSON escapes control characters. Printed
+labels and paths also have terminal control sequences removed.
 
 `--output PATH` creates a new file with mode `0600` on systems with POSIX
 permissions. Existing files are not replaced. File output disables color.
@@ -119,10 +101,10 @@ npx cliscope --view weekdays --csv --output weekdays.csv
 
 ## Installation
 
-The npm package requires Node.js 20.13.1 or later. It installs its own Bun
-runtime; a separate Bun installation is not required.
+See the [README](../README.md) for the Node requirement. The npm package installs
+its own Bun runtime; a separate Bun installation is not required.
 
-Use `npx cliscope` without a global installation. To install globally:
+To install globally:
 
 ```sh
 npm install --global cliscope
@@ -130,11 +112,8 @@ cliscope
 ```
 
 For standalone executables, see [binary installation](releases.md#install-a-binary).
-
-## Exit status
-
-Exit status is 0 on success and 1 on error. Diagnostics are written to standard
-error.
+The same CLI is available as `@justinoboyle/cliscope` through
+[GitHub Packages](github-packages.md), which requires registry authentication.
 
 ## See also
 

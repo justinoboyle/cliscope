@@ -19,22 +19,32 @@ export function safeText(value: string): string {
   return stripVTControlCharacters(value).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, '');
 }
 
-/** Truncate by terminal cells without splitting a Unicode grapheme. */
+/** Bound terminal cells and UTF-16 units, without splitting a Unicode grapheme. */
 export function fitText(value: string, width: number, ascii = false): string {
-  const clean = safeText(value);
   const available = Math.max(0, Math.floor(width));
-  if (stringWidth(clean) <= available) return clean;
   if (available === 0) return '';
+  const clean = safeText(value);
+  // A bounded whole-string check avoids segmenting ordinary short labels.
+  if (clean.length <= available && stringWidth(clean) <= available) return clean;
+  // Combining marks consume no cells. Bound both segmentation and emitted units.
+  const unitBudget = available * 16;
+  const sample = clean.slice(0, unitBudget + 1);
   const suffix = ascii ? '~' : '…';
   let result = '';
+  let prefix = '';
   let used = 0;
-  for (const { segment } of graphemes.segment(clean)) {
+  for (const { segment, index } of graphemes.segment(sample)) {
+    // The final sampled grapheme may continue beyond the sample; omit it whole.
+    if (sample.length < clean.length && index + segment.length === sample.length)
+      return prefix + suffix;
     const size = stringWidth(segment);
-    if (used + size > available - 1) break;
+    if (used + size > available || result.length + segment.length > unitBudget)
+      return prefix + suffix;
     result += segment;
     used += size;
+    if (used <= available - 1 && result.length < unitBudget) prefix = result;
   }
-  return result + suffix;
+  return result;
 }
 
 export function terminalWidth(value: number): number {
@@ -88,7 +98,8 @@ export function activityLines(report: Report, width: number, ascii: boolean): re
   const dayMs = 86_400_000;
   const dayCount = Math.min(56, Math.max(1, width), Math.floor((lastTime - firstTime) / dayMs) + 1);
   if (!Number.isFinite(dayCount) || dayCount < 1) return [];
-  const counts = new Map(report.days.map((day) => [day.date, day.count]));
+  // Sorted, unique UTC dates: at most dayCount records can fall inside this window.
+  const counts = new Map(report.days.slice(-dayCount).map((day) => [day.date, day.count]));
   const start = lastTime - (dayCount - 1) * dayMs;
   const values = Array.from(
     { length: dayCount },

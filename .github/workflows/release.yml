@@ -2,79 +2,177 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Plan the next release or publish an existing reservation.
+        type: choice
+        options: [plan, publish]
+        default: plan
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: releases
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validate release tag
+  plan:
+    name: Compare release contracts
+    if: inputs.phase != 'publish'
     runs-on: ubuntu-24.04
+    outputs:
+      has_release: ${{ steps.plan.outputs.has_release }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      resume: ${{ steps.plan.outputs.resume }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '26.9.0'
-      - name: Validate SemVer, package version, and main ancestry
+      - uses: ./.github/actions/release-setup
+      - name: Select the next source commit
+        id: plan
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const tag = process.env.RELEASE_TAG;
-          if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag ?? '')) {
-            throw new Error('Release tags must use stable SemVer: vMAJOR.MINOR.PATCH');
-          }
-          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
-          if (tag !== `v${version}`) throw new Error('Tag must match package.json version');
-          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
-          if (lock.version !== version || lock.packages?.['']?.version !== version) {
-            throw new Error('package-lock.json must match package.json version');
-          }
-          NODE
-          test "$(git cat-file -t "$RELEASE_TAG")" = tag
-          git merge-base --is-ancestor "$RELEASE_TAG^{commit}" origin/main
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/release.ts plan --output release-plan.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.plan.outputs.has_release == 'true'
+        with:
+          name: release-plan
+          path: release-plan.json
+          if-no-files-found: error
+          retention-days: 14
 
-  build:
-    name: Build release
-    needs: validate
-    uses: ./.github/workflows/ci.yml
-
-  publish:
-    name: Publish release assets
-    needs: build
+  handoff:
+    name: Run the selected source workflow
+    needs: plan
+    if: needs.plan.outputs.has_release == 'true' && needs.plan.outputs.resume != 'true' && needs.plan.outputs.source_sha != github.sha
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-setup
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-plan
+      - name: Dispatch planning at the immutable source ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/release.ts dispatch-build --plan release-plan.json
+
+  build:
+    name: Verify selected source
+    needs: plan
+    if: needs.plan.outputs.has_release == 'true' && needs.plan.outputs.resume != 'true' && needs.plan.outputs.source_sha == github.sha
+    uses: ./.github/workflows/ci.yml
+    with:
+      release-version: ${{ needs.plan.outputs.version }}
+
+  reserve:
+    name: Reserve tested release
+    needs: [plan, build]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_release == 'true' && (needs.plan.outputs.resume == 'true' || needs.build.result == 'success')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/release-setup
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-plan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.plan.outputs.resume != 'true'
         with:
           pattern: cliscope-*
           path: artifacts
           merge-multiple: true
-      - name: Generate checksums and publish
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.plan.outputs.resume != 'true'
+        with:
+          name: npm-package
+          path: artifacts
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.plan.outputs.resume != 'true'
+        with:
+          name: github-package
+          path: artifacts
+      - name: Create or recover the immutable reservation
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+        run: node --import tsx scripts/release.ts reserve --plan release-plan.json --artifacts artifacts
+
+  dispatch:
+    name: Publish from the reserved tag
+    needs: reserve
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-setup
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-plan
+      - name: Dispatch publication at the exact source tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/release.ts dispatch --plan release-plan.json
+
+  recover:
+    name: Verify reserved artifacts
+    if: inputs.phase == 'publish'
+    runs-on: ubuntu-24.04
+    permissions:
+      # GitHub requires push access to read draft release assets.
+      contents: write
+      actions: read
+    outputs:
+      version: ${{ steps.recover.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/release-setup
+      - name: Restore archives without rebuilding
+        id: recover
+        env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        working-directory: artifacts
-        run: |
-          sha256sum cliscope-*.tar.gz > SHA256SUMS
-          gh release create "$RELEASE_TAG" cliscope-*.tar.gz SHA256SUMS --verify-tag --title "$RELEASE_TAG" --generate-notes
+        run: node --import tsx scripts/release.ts recover --tag "$RELEASE_TAG" --output release-plan.json --artifacts artifacts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-plan
+          path: release-plan.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-archives
+          path: artifacts/*
+          if-no-files-found: error
 
   publish-npm:
-    name: Publish npm package
-    needs: build
+    name: Publish and verify npm package
+    needs: recover
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
@@ -82,16 +180,90 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '26.9.0'
-          registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false
+      - uses: ./.github/actions/release-setup
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: npm-package
-          path: package
-      # Publish the exact archive installed and tested by the consumer matrix.
-      # npm authenticates using this job's OIDC identity; no NPM_TOKEN is required.
-      # npm provenance is unavailable for private GitHub repositories.
-      - run: npm publish ./package/cliscope-*.tgz --ignore-scripts --access public --tag latest --provenance=false
+          name: release-plan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-archives
+          path: artifacts
+      - name: Publish or verify the existing identical package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/release.ts publish --plan release-plan.json --registry npm --artifacts artifacts
+      - name: Install the published version outside the checkout
+        env:
+          RELEASE_VERSION: ${{ needs.recover.outputs.version }}
+        run: npm install --prefix "$RUNNER_TEMP/npm-registry-install" --engine-strict --ignore-scripts --no-audit --no-fund "cliscope@$RELEASE_VERSION"
+      - name: Verify installed CLI and terminal behavior
+        run: |
+          node scripts/smoke-package.mjs "$RUNNER_TEMP/npm-registry-install"
+          python3 scripts/test-terminal.py node "$RUNNER_TEMP/npm-registry-install/node_modules/cliscope/dist/launcher.js" --demo -i
+      - name: Verify npm signatures and provenance
+        working-directory: ${{ runner.temp }}/npm-registry-install
+        run: npm audit signatures
+
+  publish-github:
+    name: Publish and verify GitHub package
+    needs: recover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-setup
+        with:
+          registry: https://npm.pkg.github.com
+          scope: '@justinoboyle'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-plan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-archives
+          path: artifacts
+      - name: Publish or verify the existing identical package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/release.ts publish --plan release-plan.json --registry github --artifacts artifacts
+      - name: Install the published version outside the checkout
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.recover.outputs.version }}
+        run: npm install --prefix "$RUNNER_TEMP/github-registry-install" --engine-strict --ignore-scripts --no-audit --no-fund "@justinoboyle/cliscope@$RELEASE_VERSION"
+      - name: Verify installed CLI and terminal behavior
+        run: |
+          node scripts/smoke-package.mjs "$RUNNER_TEMP/github-registry-install" @justinoboyle/cliscope
+          python3 scripts/test-terminal.py node "$RUNNER_TEMP/github-registry-install/node_modules/@justinoboyle/cliscope/dist/launcher.js" --demo -i
+
+  finalize:
+    name: Complete release and continue the queue
+    needs: [publish-npm, publish-github]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/release-setup
+        with:
+          registry: https://npm.pkg.github.com
+          scope: '@justinoboyle'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-plan
+      - name: Verify publication, expose release assets, and drain queued commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/release.ts finalize --plan release-plan.json

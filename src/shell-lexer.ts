@@ -50,11 +50,12 @@ function backtickEnd(command: string, start: number): number {
 }
 
 /** A local cursor owns all mutable lexical state; no input is ever evaluated. */
-class ShellLexer {
+export class ShellLexer {
   // Consume ordinary unquoted text in runs; shell syntax stays on the full reader.
   private readonly plain = /[\w./:=+-]+/y;
   private readonly command: string;
-  private readonly tokens: Token[] = [];
+  private word: Word | undefined;
+  private operator: Operator | undefined;
   private index = 0;
   private buffer = '';
   private started = false;
@@ -67,14 +68,22 @@ class ShellLexer {
     this.command = command;
   }
 
-  scan(): readonly Token[] {
+  get complete(): boolean {
+    return this.index >= this.command.length && this.quote === undefined;
+  }
+
+  *[Symbol.iterator](): Generator<Token, void, undefined> {
     for (; this.index < this.command.length; this.index += 1) {
       if (!this.readPlainRun()) this.readCharacter();
+      if (this.word !== undefined) yield this.word;
+      if (this.operator !== undefined) yield this.operator;
+      this.word = undefined;
+      this.operator = undefined;
     }
-    // Unterminated quotes make the command incomplete.
-    if (this.quote !== undefined) return [];
+    if (this.quote !== undefined) return;
     this.flush();
-    return this.tokens;
+    if (this.word !== undefined) yield this.word;
+    this.word = undefined;
   }
 
   private readPlainRun(): boolean {
@@ -90,13 +99,13 @@ class ShellLexer {
 
   private flush(): void {
     if (this.started)
-      this.tokens.push({
+      this.word = {
         kind: 'word',
         text: this.buffer,
         dynamic: this.dynamic,
         quoted: this.quoted,
         assignment: assignments.test(this.buffer) && (!this.quoted || this.assignmentPrefix),
-      });
+      };
     this.buffer = '';
     this.started = false;
     this.dynamic = false;
@@ -180,7 +189,7 @@ class ShellLexer {
   private readComment(): void {
     while (this.index < this.command.length && this.command[this.index] !== '\n') this.index += 1;
     this.flush();
-    this.tokens.push({ kind: 'operator', text: '\n' });
+    this.operator = { kind: 'operator', text: '\n' };
   }
 
   private isOperator(character: string, next: string | undefined): boolean {
@@ -207,10 +216,10 @@ class ShellLexer {
         this.index += 1;
       }
     }
-    this.tokens.push({ kind: 'operator', text: operator });
+    this.operator = { kind: 'operator', text: operator };
   }
 }
 
-export function tokenize(command: string): readonly Token[] {
-  return new ShellLexer(command).scan();
+export function tokenize(command: string): ShellLexer {
+  return new ShellLexer(command);
 }

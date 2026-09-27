@@ -24,16 +24,16 @@ function toolsReport(names: readonly string[]): Report {
   };
 }
 
-await test('CSV quotes commas, double quotes, and embedded line endings using CRLF records', () => {
+await test('CSV quotes delimiters and removes embedded controls while retaining CRLF records', () => {
   const report = toolsReport(['a,b', 'say"hi', 'line\nbreak', 'line\r\nbreak']);
   assert.equal(
     formatReport(report, 'csv', 'tools', options),
-    '"tool","count","share"\r\n"a,b",1,0.25\r\n"say""hi",1,0.25\r\n"line\nbreak",1,0.25\r\n"line\r\nbreak",1,0.25\r\n',
+    '"tool","count","share"\r\n"a,b",1,0.25\r\n"say""hi",1,0.25\r\n"linebreak",1,0.25\r\n"linebreak",1,0.25\r\n',
   );
 });
 
 await test('CSV neutralizes every spreadsheet formula prefix without changing JSON names', () => {
-  for (const prefix of ['=', '+', '-', '@', '\t', '\r', '\n']) {
+  for (const prefix of ['=', '+', '-', '@']) {
     const name = `${prefix}SUM(1,2)`;
     const report = toolsReport([name]);
     assert.equal(
@@ -42,6 +42,45 @@ await test('CSV neutralizes every spreadsheet formula prefix without changing JS
     );
     const decoded: unknown = JSON.parse(formatReport(report, 'json', 'tools', options));
     assert.deepEqual(decoded, { ...report, weekdays: weekdayStats(report) });
+  }
+});
+
+await test('CSV strips OSC and CSI sequences before testing an exposed formula prefix', () => {
+  const sequences = [
+    '\u001b]52;c;Zml4dHVyZQ==\u0007',
+    '\u001b]52;c;Zml4dHVyZQ==\u001b\\',
+    '\u001b[2J',
+    '\u001b[31m',
+    '\u009b2J',
+    '\t',
+    '\r',
+    '\n',
+    '\u0085',
+    '\u202e',
+  ];
+  for (const sequence of sequences) {
+    const name = `${sequence}=SUM(1,"x")`;
+    const report = toolsReport([name]);
+    assert.equal(
+      formatReport(report, 'csv', 'tools', options),
+      '"tool","count","share"\r\n"\'=SUM(1,""x"")",1,1\r\n',
+    );
+    const decoded: unknown = JSON.parse(formatReport(report, 'json', 'tools', options));
+    assert.deepEqual(decoded, { ...report, weekdays: weekdayStats(report) });
+  }
+});
+
+await test('CSV string cells contain no C0 or C1 controls', () => {
+  const controls = [
+    ...Array.from({ length: 32 }, (_, index) => index),
+    ...Array.from({ length: 33 }, (_, index) => 127 + index),
+  ];
+  for (const code of controls) {
+    const report = toolsReport([`before${String.fromCodePoint(code)}after`]);
+    const rows = formatReport(report, 'csv', 'tools', options).split('\r\n');
+    assert.equal(rows.length, 3);
+    assert.equal(rows.at(-1), '');
+    for (const row of rows) assert.doesNotMatch(row, /\p{Cc}/u);
   }
 });
 

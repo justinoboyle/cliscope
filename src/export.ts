@@ -1,13 +1,14 @@
 import { renderCalendar, renderWeekdays, weekdayStats } from './calendar.js';
-import { renderReport, type RenderOptions } from './render.js';
+import { renderReport, safeText, type RenderOptions } from './render.js';
 import type { Report, View } from './types.js';
 
 export type OutputFormat = 'text' | 'json' | 'csv';
 
-/** Quote CSV text and prevent formula evaluation when opened in a spreadsheet. */
+/** Sanitize terminal controls before quoting and checking spreadsheet formulas. */
 function csvCell(value: string | number): string {
   if (typeof value === 'number') return String(value);
-  const text = /^[=+@\-\t\r\n]/.test(value) ? `'${value}` : value;
+  const clean = safeText(value);
+  const text = /^[=+@-]/.test(clean) ? `'${clean}` : clean;
   return `"${text.replaceAll('"', '""')}"`;
 }
 

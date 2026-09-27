@@ -2,14 +2,11 @@ Describe the user-visible problem and resulting behavior. Link related issues.
 
 ## Validation
 
-- [ ] `npm run check`
-- [ ] `npm test`
-- [ ] `npm run build`
-- [ ] `npm run build:binary`
-- [ ] Tests cover relevant behavior, edge cases, and regressions.
-- [ ] User-facing changes include documentation and a changelog entry.
-- [ ] Fixtures contain invented commands only, with no private shell history.
+- [ ] [Contributor checks](https://github.com/justinoboyle/cliscope/blob/main/CONTRIBUTING.md#development) passed.
+- [ ] Tests cover the changed behavior and relevant regressions.
+- [ ] Documentation links to the owner of each rule or procedure.
 
 ## Compatibility
 
-Describe any CLI, JSON schema, or supported-platform changes. State the intended SemVer impact.
+Describe changes to flags, output, or supported platforms. Follow the
+[release procedure](https://github.com/justinoboyle/cliscope/blob/main/docs/releases.md).

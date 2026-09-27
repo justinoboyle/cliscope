@@ -26,6 +26,8 @@ const application = await build({
   naming: { entry: 'app.[ext]', asset: '[name]-[hash].[ext]' },
   target: 'bun',
   format: 'esm',
+  // Keep the interactive module out of the default command's parse path.
+  splitting: true,
   external: ['@opentui/core-*'],
   sourcemap: 'external',
   metafile: true,

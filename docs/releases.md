@@ -1,91 +1,130 @@
 # Releases
 
-Push an annotated release tag to run checks, build binaries, and publish to npm
-and GitHub Releases. Merging a pull request runs CI without publishing. The tag
-selects both the source commit and the workflow version.
+Squash merges and ordinary merge commits start the `Release` workflow. It selects
+the version, verifies source, creates an annotated tag, and publishes npm, GitHub
+Packages, and native archives. PR authors do not edit release versions, a changelog,
+or a contract lock.
 
-## Versions and tags
+## Contract lock
 
-| Name            | Example                   | Use                                                                                                         |
-| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Package version | `0.2.1`                   | Identifies the npm package and `cliscope --version` output. Both package manifests must match.              |
-| Git tag         | `v0.2.1`                  | Identifies a source commit. Never move or replace a published release tag.                                  |
-| npm dist-tag    | `latest` → `0.2.1`        | Selects the version installed by `npm install --global cliscope`. It moves when a new release is published. |
-| GitHub Release  | Release page for `v0.2.1` | Holds notes, binary archives, and checksums for the Git tag.                                                |
+`release-contract.json` describes the public contract. It contains no release
+version. The generator reads source without executing it and records:
 
-`npm install --global cliscope@0.2.1` selects an exact version. Moving `latest`
-does not change that version or its Git tag. See [npm dist-tags](https://docs.npmjs.com/adding-dist-tags-to-packages/).
+- CLI flags, aliases, validators, and defaults.
+- JSON output fields and CSV column order.
+- Executable names, supported native platforms, and runtime requirements.
+- Semantic `tsconfig.json` build configuration, excluding comments and formatting.
+  Inherited configuration through `extends` is unsupported and fails extraction.
+- Package entry interpretation, included files, consumer restrictions, required /
+  optional / peer dependency roles, peer metadata, and installation and packaging
+  hooks, including artifact-producing build commands.
+- Artifact-producing CI jobs (`verify` and `package`) and inherited workflow
+  configuration, including archive assembly, matrix executables, and uploads.
+- Resolved runtime dependency identities, including transitive packages, and
+  normalized source fingerprints for application code and transitive local
+  build helpers, including the scoped-package converter and source interpreter lines.
 
-Use [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`. After 1.0,
-increment patch for fixes, minor for compatible features, and major for
-incompatible CLI or JSON changes. During 0.x development, use patch for fixes
-and minor for features or breaking changes. Document any migration required.
+Record keys have a canonical order. Conditional `exports` and `imports` retain
+their key order because it affects Node resolution. Unsupported
+contract structures fail extraction; workflow YAML also rejects aliases, duplicate
+keys, and missing artifact jobs. Display names and comments do not affect its
+contract. Source fingerprints conservatively cover behavior outside structured
+fields. Changes to the generator require tests
+for both the preceding released source and the proposed source.
 
-Release tags must match `vMAJOR.MINOR.PATCH`, without leading zeroes. Prerelease
-suffixes such as `-beta.1` are not supported by this workflow.
+The lock is generated during planning and copied into the immutable annotated
+tag. The release also includes it as a downloadable asset. Its digest binds that
+asset to the tag. There is no manually maintained lock on the source branch.
 
-## Prepare and publish
+## Version selection
 
-Substitute the next unpublished version for `0.2.1` below.
+The latest stable tag supplies the preceding version. Its contract supplies the
+baseline. The legacy `v0.2.1` baseline is extracted from that tag's actual source
+using the same generator as the candidate source.
 
-1. Create a branch and update the version:
+| Contract comparison                                                        | Release change |
+| -------------------------------------------------------------------------- | -------------- |
+| Removed or changed existing contract; unclassified runtime behavior change | Breaking       |
+| Added compatible fields, flags, or platforms with no breaking change       | Minor          |
+| Unchanged contract and runtime behavior                                    | Patch          |
 
-   ```sh
-   git switch main
-   git pull --ff-only origin main
-   git switch -c release/0.2.1
-   npm version 0.2.1 --no-git-tag-version
-   ```
+At `1.x` and later, breaking changes advance the major version. During `0.x`,
+breaking changes advance the minor version. Lower components reset to zero.
+Stable tags use `vMAJOR.MINOR.PATCH`; the workflow does not select prereleases.
 
-   This updates `package.json` and `package-lock.json` without creating a commit
-   or tag. Update `CHANGELOG.md` and commit all three files.
+The decision is deterministic for the two contract snapshots. It is conservative:
+a behavior-preserving runtime refactor can receive a breaking classification.
+An automatic source comparison does not prove arbitrary semantic compatibility.
+Formatting, comments, and help prose are excluded from behavior fingerprints;
+documentation and test changes normally produce a patch release.
 
-2. Run `npm run verify`, push the branch, and open a pull request. Wait for
-   **Quality gate**, then merge. Squash merges and merge commits are supported.
+Tags are the version authority. Source manifests retain `0.0.0-development`.
+One stamping function writes the chosen version to both manifests in disposable
+CI checkouts; the CLI, native binaries, and package archives receive that value.
+Ordinary PR checks stamp `0.0.0`, which is never selected for publication.
 
-3. Tag the merged commit:
+Commits and pull requests provide change history. GitHub release notes are
+generated from that history. npm's `latest` is a mutable installation selector,
+not a source tag or another version record. See [npm dist-tags](https://docs.npmjs.com/adding-dist-tags-to-packages/).
 
-   ```sh
-   git switch main
-   git pull --ff-only origin main
-   node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version'
-   git tag -a v0.2.1 -m 'Release v0.2.1' HEAD
-   git push origin v0.2.1
-   ```
+## Publication and recovery
 
-   Check the printed version before creating the tag. Use `git tag -s` instead
-   of `-a` if Git signing is configured. Lightweight tags are rejected.
+The workflow processes unreleased first-parent commits from `main` in order.
+Its global concurrency group serializes work; Git history retains the queue when
+GitHub replaces a pending workflow run.
 
-The **Release** workflow checks that the annotated tag matches both manifests
-and points to a commit reachable from `main`. It runs the native build and
-installed-package test matrices before publishing. Two jobs then publish in
-parallel: one uploads GitHub binary archives and `SHA256SUMS`; the other publishes
-the npm package and moves `latest` to that version. npm receives the same tarball
-installed by the consumer test matrix; the publish job does not rebuild it.
+1. Compare contracts and select the next version.
+2. If the selected commit differs from the running workflow, dispatch planning at
+   immutable `release-build/SOURCE_SHA`. That run replans, then uses its own workflow
+   and checkout. Build tags carry no version.
+3. Stamp and verify that source with the native and installed-package matrices.
+   The contract's platform list also determines the required native archives.
+4. Require the [source check](../scripts/release-model.ts) before creating the
+   immutable SemVer tag. Its annotation binds the contract and tested archives to
+   that source and build run. Copy the archives to a draft GitHub Release.
+5. Dispatch publication at that tag so npm provenance identifies the built source.
+6. Publish both registries, install their published versions outside the
+   checkout, and run CLI and terminal tests. Publish the GitHub Release only
+   after both registry jobs pass. Continue with the next queued commit.
 
-Check publication with `npm view cliscope version` and `npm dist-tag ls cliscope`.
-The npm package is public. GitHub release downloads require repository access.
+The scoped archive changes only the package name. CI compares its payload and
+remaining manifest fields against the npm archive before testing installation.
+See [GitHub Packages](github-packages.md) for consumer authentication.
 
-## Configure npm trust once
-
-Use npm 11.19 or later and run as an authenticated npm package maintainer:
+For a failed release, rerun the `Release` workflow on `main` with phase `plan`:
 
 ```sh
-npm trust github cliscope --file release.yml --repo justinoboyle/cliscope --allow-publish
+gh workflow run release.yml --ref main -f phase=plan
 ```
 
-Complete npm's authentication prompt. The configuration must name repository
-`justinoboyle/cliscope`, workflow `release.yml`, no environment, and permission
-for direct `npm publish`. The workflow filename excludes `.github/workflows/`.
-Staging-only permission does not allow this workflow to publish.
+An unfinished reservation resumes without another build or source handoff.
+Recovery uses the reserved draft assets or the originating run's artifacts and checks their
+hashes. Matching registry publications are skipped; conflicting bytes fail.
+Missing original archives fail rather than being rebuilt under an existing tag.
+Registry metadata is allowed a bounded propagation delay after publishing.
+Never move a build or release tag, overwrite an asset, or delete a published
+package to retry.
 
-The npm job has `id-token: write` and uses OIDC authentication without an
-`NPM_TOKEN` secret. Saving the trust configuration does not validate it; a
-workflow publication does. See [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/)
-and [trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+## Authentication
 
-Provenance attestations are unavailable for private source repositories. The
-publish command uses `--provenance=false`.
+npm uses the existing trusted publisher for `justinoboyle/cliscope`, workflow
+`release.yml`, with direct-publish permission and no environment. Publication
+uses OIDC and provenance, with no stored npm token. The filename remains
+`release.yml` across planning and tag publication.
+
+GitHub Packages uses a job-scoped `GITHUB_TOKEN` with `packages: write`.
+Build handoff receives `contents: write` and `actions: write` to create its ref
+and dispatch at that source. Tag reservation, draft recovery, and release completion
+receive `contents: write`;
+GitHub requires push access to read draft assets. Publication dispatch and the
+finalization job's queue continuation receive `actions: write`. Ordinary pull-request checks remain
+read-only. No bot commit, release PR, personal token, or main-protection bypass
+is required. Source and binary downloads are public; package visibility has its
+own registry setting.
+
+After installation, `npm audit signatures` checks registry signatures and
+available provenance. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+and [npm provenance](https://docs.npmjs.com/generating-provenance-statements/).
 
 ## Install a binary
 
@@ -108,18 +147,3 @@ install -m 755 cliscope ~/.local/bin/cliscope
 Add `~/.local/bin` to `PATH` if needed. On macOS, compare `shasum -a 256` output
 with `SHA256SUMS`. On Windows, use `Get-FileHash -Algorithm SHA256`, extract with
 `tar -xzf`, and put `cliscope.exe` on `PATH`.
-
-## Recover from a failure
-
-Inspect the failed job. For a network or npm trust failure, correct the external
-configuration and select **Re-run failed jobs**. Inspect both npm and GitHub
-first: one publish job can succeed while the other fails. npm versions cannot
-be overwritten.
-
-If the source or workflow needs a fix, merge it with a new version and create a
-new tag. Rerunning an old tag uses its original workflow, including `v0.1.0`,
-which predates npm automation. Never move a published tag to include a fix.
-
-The `v0.2.0` release published binaries, but npm rejected its tarball argument as
-a GitHub repository shorthand. Version `0.2.1` corrects the local path with a
-leading `./`. The original tag remains unchanged; the fix uses a new version and tag.
