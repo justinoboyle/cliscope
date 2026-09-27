@@ -137,3 +137,9 @@ unchanged. Publication still required a manual dispatch at that tag. These fixes
 have not yet demonstrated a complete unattended release; the
 [release procedure](releases.md#publication-and-recovery) remains the single owner
 of recovery instructions.
+
+[#34](https://github.com/justinoboyle/cliscope/issues/34) records successful npm
+submission whose exact reserved integrity became visible roughly three minutes
+later, after confirmation timed out; [visibility regressions](../test/release-state.test.ts)
+cover delayed matches while retaining immediate rejection of conflicts and
+authorization failures.

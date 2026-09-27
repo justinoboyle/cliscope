@@ -215,6 +215,7 @@ await test('registry visibility retries absence, but never masks conflicts or au
     /E401/,
   );
   let missingReads = 0;
+  let missingPauses = 0;
   await assert.rejects(
     confirmPublication(
       digest.integrity,
@@ -222,9 +223,26 @@ await test('registry visibility retries absence, but never masks conflicts or au
         missingReads++;
         return undefined;
       },
-      async () => {},
+      async () => {
+        missingPauses++;
+      },
     ),
-    /two minutes/,
+    /five minutes/,
   );
-  assert.equal(missingReads, 13);
+  assert.equal(missingReads, 31);
+  assert.equal(missingPauses, 30);
+});
+
+await test('registry visibility accepts matching bytes on the final five-minute poll', async () => {
+  let reads = 0;
+  let pauses = 0;
+  await confirmPublication(
+    digest.integrity,
+    async () => (++reads === 31 ? digest.integrity : undefined),
+    async () => {
+      pauses++;
+    },
+  );
+  assert.equal(reads, 31);
+  assert.equal(pauses, 30);
 });
