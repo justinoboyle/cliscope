@@ -2,7 +2,51 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as fc from 'fast-check';
 import { tokenize } from '../src/shell-lexer.js';
-import { extractTools } from '../src/shell-tools.js';
+import { countTools, extractTools } from '../src/shell-tools.js';
+
+await test('operator-only records are empty while quoted and escaped operators remain tools', () => {
+  for (const command of ['', ';|&()<>\n\t\r \u2003', '<<< >>> && || |&', ';'.repeat(100_000)]) {
+    assert.deepEqual(extractTools(command), []);
+    assert.equal(countTools(command).totalInvocations, 0);
+    assert.equal(countTools(command).counts.size, 0);
+  }
+  const cases: ReadonlyArray<readonly [string, readonly string[]]> = [
+    ["';' && '\n'", [';', '\n']],
+    ['\\; ; \\& ; \\<', [';', '&', '<']],
+    [
+      '; sudo -u root git; env -i npm; timeout 1 make; command -- printf',
+      ['git', 'npm', 'make', 'printf'],
+    ],
+    ['sudo -u; A=1; git; timeout --; npm; env -u HOME', ['sudo', 'git', 'timeout', 'npm', 'env']],
+  ];
+  for (const [command, expected] of cases) {
+    assert.deepEqual(extractTools(command), expected);
+    assert.deepEqual(
+      [...countTools(command).counts],
+      expected.map((name) => [name, 1]),
+    );
+  }
+});
+
+await test('pending lexer tokens preserve word-before-operator order, pairs, comments, and EOF', () => {
+  const tokens = tokenize('git&&npm; echo x#y # comment\ncat<<<file');
+  assert.deepEqual(
+    [...tokens].map(({ kind, text }) => [kind, text]),
+    [
+      ['word', 'git'],
+      ['operator', '&&'],
+      ['word', 'npm'],
+      ['operator', ';'],
+      ['word', 'echo'],
+      ['word', 'x#y'],
+      ['operator', '\n'],
+      ['word', 'cat'],
+      ['operator', '<<<'],
+      ['word', 'file'],
+    ],
+  );
+  assert.equal(tokens.complete, true);
+});
 
 await test('lexer yields a prefix without scanning or retaining the remaining argument tokens', () => {
   const tokens = tokenize(`git ${'argument '.repeat(100_000)}`);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { generateContract, hashContract } from '../scripts/release-contract.js';
+import { contractSchema, generateContract, hashContract } from '../scripts/release-contract.js';
 import {
   assertSameRelease,
   assertReleaseAssets,
@@ -40,7 +40,7 @@ const reservation: Reservation = {
   kind: 'cliscope-release',
   ...releaseIdentity(plan),
   runId: '123',
-  archives: Object.fromEntries(requiredArchives(plan.tag).map((name) => [name, digest])),
+  archives: Object.fromEntries(requiredArchives(plan).map((name) => [name, digest])),
 };
 
 await test('tag annotations round-trip the actual contract and reject malformed or divergent state', () => {
@@ -59,8 +59,8 @@ await test('tag annotations round-trip the actual contract and reject malformed 
 });
 
 await test('reservation requires every native and registry archive and forbids injected paths', () => {
-  assert.equal(requiredArchives(plan.tag).length, 7);
-  assert.throws(() => requiredArchives('v01.0.0'));
+  assert.equal(requiredArchives(plan).length, 7);
+  assert.throws(() => requiredArchives({ ...plan, tag: 'v01.0.0' }));
   assert.throws(
     () => parseReservation(JSON.stringify({ ...reservation, archives: {} })),
     /archive set/,
@@ -94,6 +94,36 @@ await test('publication is idempotent only for matching immutable bytes', () => 
   assertLatestCanAdvance('0.2.1', plan.tag);
   assertLatestCanAdvance('0.3.0', plan.tag);
   assert.throws(() => assertLatestCanAdvance('0.4.0', plan.tag), /backwards/);
+});
+
+await test('every contracted platform requires an archive and checksum', () => {
+  const expanded = { ...contract, platforms: [...contract.platforms, 'linux-riscv64'] };
+  const candidate = { ...reservation, contract: expanded, contractHash: hashContract(expanded) };
+  const added = 'cliscope-linux-riscv64.tar.gz';
+  assert.ok(requiredArchives(candidate).includes(added));
+  assert.equal(requiredArchives(candidate).length, 8);
+  assert.throws(() => parseReservation(JSON.stringify(candidate)), /archive set/);
+  assert.throws(() => checksumFile(candidate), /no digest/);
+  const complete = { ...candidate, archives: { ...candidate.archives, [added]: digest } };
+  assert.deepEqual(parseReservation(JSON.stringify(complete)), complete);
+  assert.ok(checksumFile(complete).includes(`${digest.sha256}  ${added}\n`));
+});
+
+await test('contract and archive boundaries reject empty, duplicate, and unsafe platform IDs', () => {
+  for (const platforms of [
+    [],
+    ['linux-x64', 'linux-x64'],
+    ['../outside'],
+    ['/tmp'],
+    ['a\\b'],
+    [''],
+    ['-x'],
+    ['a b'],
+  ]) {
+    const invalid = { ...contract, platforms };
+    assert.throws(() => contractSchema.parse(invalid));
+    assert.throws(() => requiredArchives({ ...plan, contract: invalid }));
+  }
 });
 
 await test('finalization verifies binary, package, checksum, and contract asset digests', () => {

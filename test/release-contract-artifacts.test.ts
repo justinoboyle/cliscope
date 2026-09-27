@@ -3,11 +3,27 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { behaviorHash } from '../scripts/release-contract-ast.js';
+import { behaviorHash, parseSource } from '../scripts/release-contract-ast.js';
 import type { Source } from '../scripts/release-contract-ast.js';
 import { addBuildSources } from '../scripts/release-contract-build.js';
 import { artifactCommands, artifactScriptFiles } from '../scripts/release-contract-commands.js';
 import { manifestContract } from '../scripts/release-contract-manifest.js';
+
+function sourceHash(text: string): string {
+  return behaviorHash(parseSource('launcher.ts', text));
+}
+
+await test('behavior fingerprints preserve interpreter lines while normalizing ordinary comments', () => {
+  const original = sourceHash('#!/usr/bin/env node\nconsole.log(1);');
+  assert.notEqual(original, sourceHash('#!/bin/sh\nconsole.log(1);'));
+  assert.notEqual(original, sourceHash('console.log(1);'));
+  assert.notEqual(original, sourceHash('#!/usr/bin/env node --no-warnings\nconsole.log(1);'));
+  assert.equal(
+    original,
+    sourceHash('#!/usr/bin/env node\n// explanatory comment\nconsole.log( 1 );'),
+  );
+  assert.equal(sourceHash('// ordinary comment\nconsole.log(1);'), sourceHash('console.log(1);'));
+});
 
 await test('artifact manifest fields and install hooks are covered; development scripts and versions are excluded', () => {
   const original = manifestContract({
@@ -20,9 +36,13 @@ await test('artifact manifest fields and install hooks are covered; development 
     { type: 'module', files: ['other'] },
     { type: 'module', files: ['dist'], exports: './other.js' },
     { type: 'module', files: ['dist'], scripts: { postinstall: 'node install.js' } },
+    { type: 'module', files: ['dist'], peerDependencies: { consumer: '^1.0.0' } },
+    { type: 'module', files: ['dist'], peerDependenciesMeta: { consumer: { optional: true } } },
   ])
     assert.notDeepEqual(manifestContract(change), original);
   assert.equal(original['manifest:exports'], 'null');
+  assert.equal(original['manifest:peerDependencies'], 'null');
+  assert.equal(original['manifest:peerDependenciesMeta'], 'null');
   assert.deepEqual(
     manifestContract({
       type: 'module',
@@ -36,6 +56,21 @@ await test('artifact manifest fields and install hooks are covered; development 
     manifestContract({ exports: { default: './fallback.js', import: './esm.js' } }),
     manifestContract({ exports: { import: './esm.js', default: './fallback.js' } }),
   );
+});
+
+await test('root peer requirements and optionality remain part of the consumer contract', () => {
+  for (const [before, after] of [
+    [{ peerDependencies: { consumer: '^1' } }, { peerDependencies: { consumer: '^2' } }],
+    [
+      { peerDependenciesMeta: { consumer: { optional: true } } },
+      { peerDependenciesMeta: { consumer: { optional: false } } },
+    ],
+    [
+      { dependencies: { bun: '1.4.2' }, optionalDependencies: {} },
+      { dependencies: {}, optionalDependencies: { bun: '1.4.2' } },
+    ],
+  ] as const)
+    assert.notDeepEqual(manifestContract(before), manifestContract(after));
 });
 
 await test('artifact fingerprints include local build helpers transitively and reject missing helpers', async () => {

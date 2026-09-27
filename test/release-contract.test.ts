@@ -20,7 +20,7 @@ const empty: Contract = {
   outputs: {},
   csv: {},
   binaries: {},
-  platforms: [],
+  platforms: ['linux-x64'],
   runtime: {},
   behavior: {},
 };
@@ -28,6 +28,7 @@ const empty: Contract = {
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'cliscope-contract-test-'));
   const files: Readonly<Record<string, string>> = {
+    'tsconfig.json': '{ "compilerOptions": { "target": "ES2023" } }',
     'package.json': JSON.stringify({
       name: 'cliscope',
       version: '0.0.0-development',
@@ -67,7 +68,15 @@ export function parseOptions() { return parseArgs({ options: { demo: { type: 'bo
 export function formatReport(report: object) { return JSON.stringify({ ...report, weekdays: weekdayStats(report) }); }`,
     'scripts/build-package.ts': 'const target = "bun";',
     'scripts/build-binary.ts': 'const native = true;',
-    '.github/workflows/ci.yml': 'matrix:\n  - target: linux-x64\n  - target: darwin-arm64\n',
+    '.github/workflows/ci.yml': `jobs:
+  verify:
+    strategy:
+      matrix:
+        include: [{ target: linux-x64 }, { target: darwin-arm64 }]
+    steps: [{ run: tar -czf native.tar.gz cliscope }]
+  package:
+    steps: [{ run: npm pack }]
+`,
   };
   for (const [path, text] of Object.entries(files)) {
     await mkdir(dirname(join(root, path)), { recursive: true });
@@ -88,7 +97,11 @@ await test('contracts classify additions, removals, changed behavior, and zero-m
     bump: 'patch',
     reasons: ['No detected public-contract or runtime behavior change'],
   });
-  const added = { ...empty, outputs: { 'Report.extra': 'string' }, platforms: ['linux-x64'] };
+  const added = {
+    ...empty,
+    outputs: { 'Report.extra': 'string' },
+    platforms: ['linux-x64', 'darwin-arm64'],
+  };
   assert.equal(classifyContracts(empty, added).bump, 'minor');
   assert.equal(classifyContracts(added, empty).bump, 'major');
   assert.equal(
@@ -169,6 +182,71 @@ await test('formatting, comments, help prose and placeholder versions do not req
       bump: 'patch',
       reasons: ['No detected public-contract or runtime behavior change'],
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+await test('build configuration captures semantic changes and ignores JSONC presentation', async () => {
+  const root = await fixture();
+  const path = join(root, 'tsconfig.json');
+  try {
+    const before = await generateContract(root);
+    await writeFile(path, '{ /* explanation */ "compilerOptions": { "target": "ES2023", }, }');
+    assert.equal(classifyContracts(before, await generateContract(root)).bump, 'patch');
+    await writeFile(
+      path,
+      '{ "compilerOptions": { "target": "ES2023", "paths": { "string-width": ["./src/demo.ts"] } } }',
+    );
+    const changed = await generateContract(root);
+    assert.equal(classifyContracts(before, changed).bump, 'major');
+    assert.ok(
+      classifyContracts(before, changed).reasons.includes(
+        'runtime: changed configuration:tsconfig.json',
+      ),
+    );
+    await writeFile(
+      path,
+      '{ "compilerOptions": { "paths": { "string-width": ["./src/demo.ts"] }, "target": "ES2023" } }',
+    );
+    assert.equal(hashContract(changed), hashContract(await generateContract(root)));
+    await writeFile(path, '{ "extends": "../external.json" }');
+    await assert.rejects(generateContract(root), /inherited configuration is not captured/);
+    await writeFile(path, '{');
+    await assert.rejects(generateContract(root), /invalid JSONC/);
+    await rm(path);
+    await assert.rejects(generateContract(root), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+await test('required runtime dependencies cannot become optional without a breaking classification', async () => {
+  const root = await fixture();
+  try {
+    const before = await generateContract(root);
+    await replace(
+      root,
+      'package.json',
+      '"dependencies":{"bun":"1.4.2"},"optionalDependencies":{}',
+      '"dependencies":{},"optionalDependencies":{"bun":"1.4.2"}',
+    );
+    const after = await generateContract(root);
+    assert.equal(before.runtime['dependency:bun'], after.runtime['dependency:bun']);
+    assert.equal(classifyContracts(before, after).bump, 'major');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+await test('native archive assembly changes request a breaking contract classification', async () => {
+  const root = await fixture();
+  try {
+    const before = await generateContract(root);
+    await replace(root, '.github/workflows/ci.yml', 'tar -czf', 'tar -cJf');
+    const change = classifyContracts(before, await generateContract(root));
+    assert.equal(change.bump, 'major');
+    assert.ok(change.reasons.includes('runtime: changed workflow:ci-artifacts'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

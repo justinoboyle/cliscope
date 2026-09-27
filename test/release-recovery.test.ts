@@ -7,7 +7,12 @@ import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { generateContract, hashContract } from '../scripts/release-contract.js';
-import { digestArchive, requiredArchives } from '../scripts/release-model.js';
+import {
+  digestArchive,
+  releaseIdentity,
+  requiredArchives,
+  type Reservation,
+} from '../scripts/release-model.js';
 
 const execute = promisify(execFile);
 // Release orchestration runs on Ubuntu. This fixture replaces gh, so no network mutation occurs.
@@ -23,7 +28,7 @@ if (args[0] === 'api') {
   if (path.includes('/git/ref/')) console.log(JSON.stringify({ object: { type: 'tag', sha: 'tagobject' } }));
   else if (path.includes('/git/tags/')) console.log(JSON.stringify({ message: JSON.stringify(reservation), object: { type: 'commit', sha: reservation.sourceSha } }));
   else if (path.includes('/releases/tags/')) { console.error('gh: Not Found (HTTP 404)'); process.exit(1); }
-  else if (path.includes('/releases?')) console.log(JSON.stringify([{ id: 1, draft: true, tag_name: reservation.tag, assets: [] }]));
+  else if (path.includes('/releases?')) console.log(JSON.stringify([{ id: 1, draft: true, tag_name: reservation.tag, assets: fixture.assets ?? [] }]));
   else throw Error('Unexpected API call: ' + path);
 } else if (args[0] === 'run' && args[1] === 'download') {
   if (args[2] !== reservation.runId) throw Error('Attempted recovery from a different workflow run');
@@ -94,6 +99,54 @@ async function checkRepeatedPublication(
   assert.equal(calls.filter((entry) => entry[0] === 'publish').length, 1);
 }
 
+async function checkExistingAssets(
+  planPath: string,
+  artifacts: string,
+  env: NodeJS.ProcessEnv,
+  fixture: { readonly reservation: Reservation; readonly bytes: string },
+): Promise<void> {
+  const fixturePath = env['RELEASE_FIXTURE'];
+  const callsPath = env['RELEASE_CALLS'];
+  assert.ok(fixturePath && callsPath);
+  const before = (await readCalls(callsPath)).length;
+  const names = [...requiredArchives(fixture.reservation), 'SHA256SUMS', 'release-contract.json'];
+  const assets = await Promise.all(
+    names.map(async (name) => ({
+      name,
+      digest: `sha256:${digestArchive(await readFile(join(artifacts, name))).sha256}`,
+    })),
+  );
+  await writeFile(
+    planPath,
+    JSON.stringify({ kind: 'release', ...releaseIdentity(fixture.reservation), resume: false }),
+  );
+  const args = [
+    '--import',
+    'tsx',
+    'scripts/release.ts',
+    'reserve',
+    '--plan',
+    planPath,
+    '--artifacts',
+    artifacts,
+  ];
+  await writeFile(fixturePath, JSON.stringify({ ...fixture, assets }));
+  await execute(process.execPath, args, { env });
+  for (const digest of [undefined, null, `sha256:${'0'.repeat(64)}`]) {
+    const invalid = assets.map((asset, index) => (index === 0 ? { ...asset, digest } : asset));
+    await writeFile(fixturePath, JSON.stringify({ ...fixture, assets: invalid }));
+    await assert.rejects(
+      execute(process.execPath, args, { env }),
+      /Existing release asset differs/,
+    );
+  }
+  const calls = (await readCalls(callsPath)).slice(before);
+  assert.ok(
+    calls.every((call) => call[0] === 'api'),
+    'Existing assets must not download or upload',
+  );
+}
+
 await test(
   'resume restores original run archives before reservation reads and never rebuilds',
   {
@@ -116,12 +169,12 @@ await test(
       };
       const bytes = 'Original tested archive';
       const { kind: _kind, resume: _resume, ...identity } = plan;
-      const reservation = {
+      const reservation: Reservation = {
         kind: 'cliscope-release',
         ...identity,
         runId: '123',
         archives: Object.fromEntries(
-          requiredArchives(plan.tag).map((name) => [name, digestArchive(Buffer.from(bytes))]),
+          requiredArchives(plan).map((name) => [name, digestArchive(Buffer.from(bytes))]),
         ),
       };
       const bin = join(directory, 'bin');
@@ -160,7 +213,7 @@ await test(
         ],
         { env },
       );
-      for (const name of requiredArchives(plan.tag))
+      for (const name of requiredArchives(plan))
         assert.equal(await readFile(join(artifacts, name), 'utf8'), bytes);
       const invocations = await readCalls(calls);
       const downloads = invocations.filter((args) => args[0] === 'run');
@@ -174,6 +227,7 @@ await test(
       const restored = await readFile(join(artifacts, 'release-contract.json'));
       assert.equal(digestArchive(restored).sha256, plan.contractHash);
       await checkRepeatedPublication(planPath, artifacts, env);
+      await checkExistingAssets(planPath, artifacts, env, { reservation, bytes });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

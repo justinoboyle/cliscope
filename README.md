@@ -22,14 +22,6 @@ npx cliscope --demo -i
 
 In interactive mode, **Tab** switches views, **/** filters tools, and **q** exits.
 
-## Development
-
-```sh
-npm ci
-npm run dev -- --demo
-npm run verify
-```
-
 See the [manual](docs/manual.md) for options, counting rules, exports, and
 installation. See [contributing](CONTRIBUTING.md) for development and
 [releases](docs/releases.md) for versioning and publication.

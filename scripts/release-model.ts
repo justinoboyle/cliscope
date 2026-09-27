@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { contractSchema, hashContract } from './release-contract.js';
 
-export const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const sourceSha = z.string().regex(/^[a-f0-9]{40}$/);
 const tagName = z.string().regex(/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
@@ -45,12 +44,13 @@ export function digestArchive(bytes: Uint8Array): Archive {
   };
 }
 
-export function requiredArchives(tag: string): readonly string[] {
-  tagName.parse(tag);
+export function requiredArchives(
+  release: Pick<ReleasePlan, 'tag' | 'contract'>,
+): readonly string[] {
+  const tag = tagName.parse(release.tag);
+  const platforms = contractSchema.shape.platforms.parse(release.contract.platforms);
   return [
-    ...['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'windows-x64'].map(
-      (target) => `cliscope-${target}.tar.gz`,
-    ),
+    ...platforms.map((target) => `cliscope-${target}.tar.gz`),
     `cliscope-${tag.slice(1)}.tgz`,
     `justinoboyle-cliscope-${tag.slice(1)}.tgz`,
   ].toSorted();
@@ -69,7 +69,7 @@ export function parseReservation(message: string): Reservation {
   const reservation = reservationSchema.parse(JSON.parse(message));
   validatePlan({ ...releaseIdentity(reservation), kind: 'release', resume: true });
   const actual = Object.keys(reservation.archives).toSorted();
-  if (JSON.stringify(actual) !== JSON.stringify(requiredArchives(reservation.tag)))
+  if (JSON.stringify(actual) !== JSON.stringify(requiredArchives(reservation)))
     throw new Error('Release annotation has an unexpected archive set');
   return reservation;
 }
@@ -140,7 +140,7 @@ export function verifyArchive(
 }
 
 export function checksumFile(reservation: Reservation): string {
-  return `${requiredArchives(reservation.tag)
+  return `${requiredArchives(reservation)
     .map((name) => {
       const digest = reservation.archives[name];
       if (!digest) throw new Error(`Reservation has no digest for ${name}`);

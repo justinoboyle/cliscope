@@ -54,7 +54,8 @@ export class ShellLexer {
   // Consume ordinary unquoted text in runs; shell syntax stays on the full reader.
   private readonly plain = /[\w./:=+-]+/y;
   private readonly command: string;
-  private tokens: Token[] = [];
+  private word: Word | undefined;
+  private operator: Operator | undefined;
   private index = 0;
   private buffer = '';
   private started = false;
@@ -74,15 +75,15 @@ export class ShellLexer {
   *[Symbol.iterator](): Generator<Token, void, undefined> {
     for (; this.index < this.command.length; this.index += 1) {
       if (!this.readPlainRun()) this.readCharacter();
-      if (this.tokens.length > 0) {
-        yield* this.tokens;
-        this.tokens = [];
-      }
+      if (this.word !== undefined) yield this.word;
+      if (this.operator !== undefined) yield this.operator;
+      this.word = undefined;
+      this.operator = undefined;
     }
     if (this.quote !== undefined) return;
     this.flush();
-    yield* this.tokens;
-    this.tokens = [];
+    if (this.word !== undefined) yield this.word;
+    this.word = undefined;
   }
 
   private readPlainRun(): boolean {
@@ -98,13 +99,13 @@ export class ShellLexer {
 
   private flush(): void {
     if (this.started)
-      this.tokens.push({
+      this.word = {
         kind: 'word',
         text: this.buffer,
         dynamic: this.dynamic,
         quoted: this.quoted,
         assignment: assignments.test(this.buffer) && (!this.quoted || this.assignmentPrefix),
-      });
+      };
     this.buffer = '';
     this.started = false;
     this.dynamic = false;
@@ -188,7 +189,7 @@ export class ShellLexer {
   private readComment(): void {
     while (this.index < this.command.length && this.command[this.index] !== '\n') this.index += 1;
     this.flush();
-    this.tokens.push({ kind: 'operator', text: '\n' });
+    this.operator = { kind: 'operator', text: '\n' };
   }
 
   private isOperator(character: string, next: string | undefined): boolean {
@@ -215,7 +216,7 @@ export class ShellLexer {
         this.index += 1;
       }
     }
-    this.tokens.push({ kind: 'operator', text: operator });
+    this.operator = { kind: 'operator', text: operator };
   }
 }
 

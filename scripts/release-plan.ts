@@ -1,6 +1,6 @@
-import { mkdtemp, mkdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { x } from 'tar';
 import {
   classifyContracts,
@@ -28,7 +28,6 @@ async function contractAt(source: string): Promise<Contract> {
     await mkdir(directory);
     await run('git', ['archive', '--format=tar', '--output', archive, source]);
     await x({ file: archive, cwd: directory, strict: true });
-    await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'dir');
     return await generateContract(directory);
   } finally {
     await rm(temporary, { recursive: true, force: true });

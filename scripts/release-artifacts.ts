@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { canonicalContract } from './release-contract.js';
@@ -22,7 +21,7 @@ async function archiveDigests(
   directory: string,
 ): Promise<Record<string, Archive>> {
   const archives: Record<string, Archive> = {};
-  for (const name of requiredArchives(plan.tag))
+  for (const name of requiredArchives(plan))
     archives[name] = digestArchive(await readFile(join(directory, name)));
   return archives;
 }
@@ -88,37 +87,23 @@ async function uploadAssets(
 ): Promise<void> {
   const release = await findRelease(repo, reservation.tag);
   if (!release) throw new Error('Reserved GitHub Release is missing');
-  const temporary = await mkdtemp(join(tmpdir(), 'cliscope-release-assets-'));
-  try {
-    const names = [...requiredArchives(reservation.tag), 'SHA256SUMS', 'release-contract.json'];
-    for (const name of names) {
-      if (release.assets.some((asset) => asset.name === name)) {
-        await run('gh', [
-          'release',
-          'download',
-          reservation.tag,
-          '--repo',
-          repo,
-          '--pattern',
-          name,
-          '--dir',
-          temporary,
-        ]);
-        if (!(await readFile(join(temporary, name))).equals(await readFile(join(directory, name))))
-          throw new Error(`Existing release asset differs from the reservation: ${name}`);
-      } else {
-        await run('gh', [
-          'release',
-          'upload',
-          reservation.tag,
-          join(directory, name),
-          '--repo',
-          repo,
-        ]);
-      }
+  const names = [...requiredArchives(reservation), 'SHA256SUMS', 'release-contract.json'];
+  for (const name of names) {
+    const asset = release.assets.find((entry) => entry.name === name);
+    if (asset) {
+      const expected = digestArchive(await readFile(join(directory, name))).sha256;
+      if (asset.digest !== `sha256:${expected}`)
+        throw new Error(`Existing release asset differs from the reservation: ${name}`);
+    } else {
+      await run('gh', [
+        'release',
+        'upload',
+        reservation.tag,
+        join(directory, name),
+        '--repo',
+        repo,
+      ]);
     }
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
   }
 }
 
@@ -163,7 +148,7 @@ export async function recoverRelease(plan: ReleasePlan, directory: string): Prom
   assertSameRelease(plan, reservation);
   const release = await findRelease(repo, plan.tag);
   await mkdir(directory, { recursive: true });
-  for (const name of requiredArchives(plan.tag)) {
+  for (const name of requiredArchives(plan)) {
     if (release?.assets.some((asset) => asset.name === name))
       await run('gh', [
         'release',

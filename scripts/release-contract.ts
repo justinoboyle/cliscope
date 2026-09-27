@@ -7,6 +7,8 @@ import type { Source } from './release-contract-ast.js';
 import { artifactCommands, artifactScriptFiles } from './release-contract-commands.js';
 import { addBuildSources } from './release-contract-build.js';
 import { manifestContract } from './release-contract-manifest.js';
+import { buildConfiguration } from './release-contract-config.js';
+import { artifactWorkflow } from './release-contract-workflow.js';
 import { runtimeLock } from './release-contract-lock.js';
 import { extractFlags } from './release-contract-inputs.js';
 import { extractCsv, extractOutputs } from './release-contract-outputs.js';
@@ -101,6 +103,7 @@ async function runtimeContract(
   return {
     ...runtime,
     ...manifestContract(manifest),
+    ...(await buildConfiguration(sourceRoot)),
     ...(await runtimeLock(sourceRoot, [...names])),
   };
 }
@@ -126,26 +129,20 @@ export async function generateContract(sourceRoot: string): Promise<Contract> {
     requiredSource(sources, 'src/calendar.ts'),
     exports,
   );
-  const workflow = await readFile(join(sourceRoot, '.github/workflows/ci.yml'), 'utf8');
-  const platforms = [...workflow.matchAll(/^[ \t]+(?:- )?target: ([a-z][a-z0-9-]*)[ \t]*$/gm)]
-    .map((match) => match[1])
-    .filter((value) => value !== undefined)
-    .toSorted();
-  const targetLines = workflow.split('\n').filter((line) => /^[ \t]+(?:- )?target:/.test(line));
-  if (
-    !platforms.length ||
-    new Set(platforms).size !== platforms.length ||
-    platforms.length !== targetLines.length
-  )
-    throw new Error('Unsupported native platform matrix');
+  const workflow = artifactWorkflow(
+    await readFile(join(sourceRoot, '.github/workflows/ci.yml'), 'utf8'),
+  );
   return contractSchema.parse({
     format: 1,
     flags,
     outputs,
     csv,
     binaries: manifest.bin,
-    platforms,
-    runtime: await runtimeContract(manifest, sources, sourceRoot),
+    platforms: workflow.platforms,
+    runtime: {
+      ...(await runtimeContract(manifest, sources, sourceRoot)),
+      'workflow:ci-artifacts': workflow.configuration,
+    },
     behavior: Object.fromEntries(
       [...sources].map(([name, source]) => [name, behaviorHash(source)]),
     ),

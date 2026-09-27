@@ -113,7 +113,7 @@ export function expressionText(node: ts.Node, source: Source): string {
     : leafText(node, source.file);
 }
 
-/** Erase types/comments and normalize literals/formatting; never execute source trees. */
+/** Preserve the interpreter line; normalize types/comments without executing source. */
 export function behaviorHash(source: Source): string {
   let text = source.text;
   for (const node of source.masked.toSorted(
@@ -135,7 +135,7 @@ export function behaviorHash(source: Source): string {
     true,
     ts.ScriptKind.JS,
   );
-  const canonical = JSON.stringify(syntaxTree(file, file));
+  const canonical = JSON.stringify([ts.getShebang(source.text) ?? null, syntaxTree(file, file)]);
   return createHash('sha256').update(canonical).digest('hex');
 }
 

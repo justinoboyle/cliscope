@@ -16,7 +16,10 @@ export const contractSchema = z.strictObject({
   outputs: fields,
   csv: z.record(z.string(), z.array(z.string())),
   binaries: fields,
-  platforms: z.array(z.string()),
+  platforms: z
+    .array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/))
+    .min(1)
+    .refine((platforms) => new Set(platforms).size === platforms.length, 'Duplicate platforms'),
   runtime: fields,
   behavior: fields,
 });

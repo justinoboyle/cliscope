@@ -1,14 +1,12 @@
 # Security review
 
-Reviewed 2026-09-26, starting from `v0.2.1` (`546033d`). No project credentials
-were found in reachable Git history or published packages. The findings below
+Reviewed 2026-09-26, starting from `v0.2.1` (`546033d`). The findings below
 have fixes and regression coverage in this change. The owner made the repository
 public during the review; no visibility change was performed by the audit.
 
 Public commit/tag metadata contains Justin O'Boyle and
-`justin@justinoboyle.com`. No personal home paths were found in the scanned
-artifacts. This review is evidence about the inspected boundaries, not a
-certification that the program has no vulnerabilities.
+`justin@justinoboyle.com`. This review is evidence about the inspected boundaries, not a certification
+that the program has no vulnerabilities.
 
 ## Findings and fixes
 
@@ -38,15 +36,8 @@ The [performance audit](docs/performance.md) records bounded fixtures, before/af
 measurements, heap limits, and remaining output-proportional allocations.
 Late invalid syntax still discards an entire record's tentative counts.
 
-Finding 8 requires a crafted history-derived label or source name. A label of
-`e` followed by 100,000 combining marks emitted 200,001 UTF-8 bytes despite a
-22-cell width. The fixed renderer emits a three-byte ellipsis. It bounds output
-to 16 UTF-16 units per requested cell and bounds grapheme segmentation to that
-size plus one unit; it drops a final incomplete sampled grapheme. Tests cover
-mark-only labels, a base character with marks, ordinary complex Unicode, complete
-report size, and generated cell/unit bounds. The 500,000-mark benchmark checks
-both the exact result and elapsed time. Full-input sanitization remains linear;
-this fix bounds rendered output rather than the source history or export size.
+For finding 8's exact byte counts, grapheme bounds, fixtures, and tests, see
+[rendering evidence](docs/performance.md#rendering-and-interaction).
 
 ## Disclosure checks
 
@@ -63,11 +54,8 @@ paths were found. The public 0.2.1 npm source map already included 13 applicatio
 modules. The dependency audit reported zero known vulnerabilities after adding
 the build-only tar dependency.
 
-The GitHub package conversion received a separate archive review. It rejects
-traversal, links, and special files before extraction, disables lifecycle scripts,
-and compares payload and manifest contents afterward. A plain-object comparison
-initially missed a file named `__proto__`; a `Map` and a regression test fixed it
-before publication.
+The [archive review](docs/audit.md#archive-regressions) records scoped-package
+validation and the `__proto__` regression.
 
 ## Release permissions
 
@@ -77,15 +65,11 @@ fork workflows. Both settings were read back through the API. The owner remains
 the only collaborator; required reviews permit zero approvals so that a solo
 maintainer can merge after checks.
 
-The release workflow uses job-scoped permissions, pinned actions, and checkout
-without retained credentials. npm uses OIDC and provenance; GitHub Packages uses
-its job token. Publication checks the reserved tag, source commit, and archive
-hashes. Existing registry content is accepted only if its integrity matches.
-Draft recovery requires GitHub repository write permission to read draft assets.
-No stored npm token, protection bypass, or version-editing bot commit is used.
-See [the release procedure](docs/releases.md) for states and recovery limits.
+See [release authentication](docs/releases.md#authentication) for job permissions
+and publisher identity, and [recovery](docs/releases.md#publication-and-recovery)
+for integrity checks and retry limits.
 
-Finding 7 concerned [release subprocess resolution](scripts/release-io.ts#L36).
+Finding 7 concerned [release subprocess resolution](scripts/release-io.ts).
 `npm run` prepends dependency executable directories, so a malicious dependency
 already merged to `main` could supply `gh`, `git`, or `npm` to a privileged job.
 It does not give an unmerged pull request access to release credentials. The

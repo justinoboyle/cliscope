@@ -82,8 +82,15 @@ function stopsUnwrapping(wrapper: string, option: string): boolean {
 class Invocation {
   private phase: 'command' | 'options' | 'value' | 'duration' | 'done' = 'command';
   private wrapper = '';
-  private takesValue: ReadonlySet<string> = new Set();
+  private takesValue: ReadonlySet<string> | undefined;
   name: string | undefined;
+
+  reset(): void {
+    this.phase = 'command';
+    this.wrapper = '';
+    this.takesValue = undefined;
+    this.name = undefined;
+  }
 
   read(word: Word): void {
     switch (this.phase) {
@@ -128,7 +135,7 @@ class Invocation {
       this.phase = 'done';
     } else {
       const key = option.split('=')[0] ?? option;
-      if (this.takesValue.has(key) && !option.includes('=')) this.phase = 'value';
+      if (this.takesValue?.has(key) && !option.includes('=')) this.phase = 'value';
     }
   }
 }
@@ -159,13 +166,16 @@ class SyntaxGuard {
  * conservatively; this is intentionally not a full shell-program interpreter.
  */
 function scanTools(command: string, onTool: (name: string) => void): boolean {
+  // Unquoted whitespace and operators alone cannot name a command. Keep quotes,
+  // escapes, substitutions and words on the lexer path, including invalid input.
+  if (/^[\s;|&()<>]*$/u.test(command)) return true;
   const tokens = tokenize(command);
   const syntax = new SyntaxGuard();
-  let invocation = new Invocation();
+  const invocation = new Invocation();
   let redirect = false;
   const flush = (): void => {
     if (invocation.name !== undefined) onTool(invocation.name);
-    invocation = new Invocation();
+    invocation.reset();
     redirect = false;
   };
   for (const token of tokens) {

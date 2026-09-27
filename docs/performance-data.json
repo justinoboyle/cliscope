@@ -574,5 +574,140 @@
         }
       }
     ]
+  },
+  "separatorOverhead": {
+    "baselineCommit": "5a1c0b29242cf51eadcc165b42a1ec9d4bfb8da3",
+    "runtime": "v26.9.0",
+    "cases": {
+      "operators": {
+        "before": {
+          "samples": [
+            {
+              "processMs": 704.219458042644,
+              "rssKiB": 87040
+            },
+            {
+              "processMs": 766.2310830783099,
+              "rssKiB": 87504
+            },
+            {
+              "processMs": 752.0418340573087,
+              "rssKiB": 85568
+            },
+            {
+              "processMs": 696.2480410002172,
+              "rssKiB": 85840
+            },
+            {
+              "processMs": 704.9881250131875,
+              "rssKiB": 86400
+            }
+          ],
+          "medianProcessMs": 704.9881250131875,
+          "medianRssKiB": 86400
+        },
+        "after": {
+          "samples": [
+            {
+              "processMs": 71.66912499815226,
+              "rssKiB": 71440
+            },
+            {
+              "processMs": 70.65545802470297,
+              "rssKiB": 71360
+            },
+            {
+              "processMs": 68.22575000114739,
+              "rssKiB": 71056
+            },
+            {
+              "processMs": 71.73870806582272,
+              "rssKiB": 71408
+            },
+            {
+              "processMs": 72.36750004813075,
+              "rssKiB": 71232
+            }
+          ],
+          "medianProcessMs": 71.66912499815226,
+          "medianRssKiB": 71360
+        }
+      },
+      "command chains": {
+        "before": {
+          "samples": [
+            {
+              "processMs": 711.9978340342641,
+              "rssKiB": 89376
+            },
+            {
+              "processMs": 724.0379590075463,
+              "rssKiB": 89648
+            },
+            {
+              "processMs": 689.377999980934,
+              "rssKiB": 89696
+            },
+            {
+              "processMs": 684.4280830118805,
+              "rssKiB": 89280
+            },
+            {
+              "processMs": 659.6069579245523,
+              "rssKiB": 89648
+            }
+          ],
+          "medianProcessMs": 689.377999980934,
+          "medianRssKiB": 89648
+        },
+        "after": {
+          "samples": [
+            {
+              "processMs": 545.944832963869,
+              "rssKiB": 82512
+            },
+            {
+              "processMs": 553.7308750208467,
+              "rssKiB": 82688
+            },
+            {
+              "processMs": 589.4204169744626,
+              "rssKiB": 82496
+            },
+            {
+              "processMs": 566.5902500040829,
+              "rssKiB": 82672
+            },
+            {
+              "processMs": 573.1315420707688,
+              "rssKiB": 82624
+            }
+          ],
+          "medianProcessMs": 566.5902500040829,
+          "medianRssKiB": 82624
+        }
+      }
+    },
+    "issue": 23,
+    "platform": "darwin",
+    "arch": "arm64",
+    "inputBytes": 4194304,
+    "heapLimitMiB": 64,
+    "method": "Five isolated Node subprocesses per version and fixture; wall time includes Node/tsx startup and result assertions. No warmup. RSS is KiB, separate from the V8 heap limit. Baseline and candidate measured sequentially on the same host.",
+    "command": "node --max-old-space-size=64 --import tsx scripts/benchmark-memory.ts CASE",
+    "differential": {
+      "cases": 100000,
+      "seeds": [23001, 23002, 23003],
+      "checks": [
+        "exact lexer tokens and completion",
+        "ordered extractTools result",
+        "countTools result"
+      ],
+      "groups": [
+        "60000 shell atom sequences of at most 60 atoms",
+        "20000 arbitrary strings of at most 300 characters",
+        "20000 operator/whitespace sequences of at most 300 characters"
+      ]
+    }
   }
 }

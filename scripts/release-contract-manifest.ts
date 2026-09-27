@@ -18,6 +18,10 @@ const artifactFields = [
   'bundleDependencies',
   'bundledDependencies',
   'config',
+  'dependencies',
+  'optionalDependencies',
+  'peerDependencies',
+  'peerDependenciesMeta',
 ] as const;
 
 function manifestValue(key: string, value: unknown): string {

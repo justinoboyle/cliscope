@@ -1,8 +1,9 @@
 # Releases
 
-Merge the pull request. The `Release` workflow selects the version, verifies the
-source, creates an annotated tag, and publishes npm, GitHub Packages, and native
-archives. PR authors do not edit release versions, a changelog, or a contract lock.
+Squash merges and ordinary merge commits start the `Release` workflow. It selects
+the version, verifies source, creates an annotated tag, and publishes npm, GitHub
+Packages, and native archives. PR authors do not edit release versions, a changelog,
+or a contract lock.
 
 ## Contract lock
 
@@ -12,17 +13,23 @@ version. The generator reads source without executing it and records:
 - CLI flags, aliases, validators, and defaults.
 - JSON output fields and CSV column order.
 - Executable names, supported native platforms, and runtime requirements.
-- Package entry interpretation, included files, consumer restrictions, and
-  installation and packaging hooks, including artifact-producing build commands.
+- Semantic `tsconfig.json` build configuration, excluding comments and formatting.
+  Inherited configuration through `extends` is unsupported and fails extraction.
+- Package entry interpretation, included files, consumer restrictions, required /
+  optional / peer dependency roles, peer metadata, and installation and packaging
+  hooks, including artifact-producing build commands.
+- Artifact-producing CI jobs (`verify` and `package`) and inherited workflow
+  configuration, including archive assembly, matrix executables, and uploads.
 - Resolved runtime dependency identities, including transitive packages, and
   normalized source fingerprints for application code and transitive local
-  build helpers, including the scoped-package converter.
+  build helpers, including the scoped-package converter and source interpreter lines.
 
 Record keys have a canonical order. Conditional `exports` and `imports` retain
-their key order because it affects Node resolution. Tests check extraction,
-classification, malformed inputs, and equivalent formatting. Unsupported
-contract structures fail extraction; source fingerprints conservatively cover
-behavior outside the structured fields. Changes to the generator require tests
+their key order because it affects Node resolution. Unsupported
+contract structures fail extraction; workflow YAML also rejects aliases, duplicate
+keys, and missing artifact jobs. Display names and comments do not affect its
+contract. Source fingerprints conservatively cover behavior outside structured
+fields. Changes to the generator require tests
 for both the preceding released source and the proposed source.
 
 The lock is generated during planning and copied into the immutable annotated
@@ -80,7 +87,7 @@ GitHub replaces a pending workflow run.
 
 The scoped archive changes only the package name. CI compares its payload and
 remaining manifest fields against the npm archive before testing installation.
-See [GitHub Packages](github-packages.md) for registry authentication.
+See [GitHub Packages](github-packages.md) for consumer authentication.
 
 For a failed release, rerun the `Release` workflow on `main` with phase `plan`:
 

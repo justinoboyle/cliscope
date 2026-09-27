@@ -28,6 +28,14 @@ prefix; they do not attempt to exhaust the host. MiB means 1,048,576 bytes. MB i
 the tables means 1,000,000 bytes. A JavaScript heap limit is not a resident-memory
 limit: RSS includes the runtime, native allocations, code, and other memory.
 
+The initial cache refactor measured about 170 → 5.5–6.4 ms for 100,000 repeated
+commands, with a separate distinct-command run at 166 ms. Before the later dense
+lexer fixes, a seven-sample ordinary-word scanning comparison measured 100,000
+chains at 294 → 218 ms and distinct extraction at 135 → 71 ms; 40,000 generated
+commands matched the preceding implementation. These historical checks used
+local development runs with varying concurrent load; they are separate from the
+controlled comparisons below.
+
 ## Parsing and allocation
 
 | Issue and fixture                                                                                   | Before                                                                                | After                                                                                             | Change and regression evidence                                                                                                                                                                  |
@@ -115,7 +123,7 @@ On Node 26.9.0, `e` followed by 100,000 U+0301 marks at width 22 changed from
 changed from 1,000,001 bytes and 40.322 ms to 3 bytes and 1.013 ms. These are
 same-host medians of five helper calls after one warmup against the saved
 pre-fix implementation; they exclude terminal rendering. The benchmark now
-checks the exact ellipsis result for the 500,000-mark case with a 50 ms budget.
+checks the exact ellipsis result for the 500,000-mark case against its configured budget.
 The evidence file retains all samples. This intentionally truncates unusually
 large graphemes; it does not change exported JSON or CSV values.
 
@@ -146,11 +154,9 @@ view cache. Warmup therefore cannot hide name normalization or initial weekday
 aggregation. Changed-query and cached-query cases, plus cached-view identity
 checks, retain separate budgets.
 
-Tests check cache identity, query changes, lazy name preparation, resize
-invalidation, and report isolation. The real-terminal harness verifies filtering,
-counts and shares, navigation, Escape, Tab views, narrow/full resizing, quit,
-Ctrl+C, and terminal restoration. It remains a POSIX test, not Windows console
-coverage.
+Tests check cache identity, query changes, lazy preparation, resize invalidation,
+and report isolation. See the [terminal regression](audit.md#consumer-and-terminal-regressions)
+for interaction evidence and the maintained installed-package test procedure.
 
 ## Startup and unchanged paths
 
@@ -189,23 +195,61 @@ The broader audit also measured paths without a demonstrated algorithmic defect:
   work; expanding the cache without a memory bound would exchange one cost for
   another.
 
+## Dense separator overhead
+
+[#23](https://github.com/justinoboyle/cliscope/issues/23) followed a
+[macOS Intel CI failure](https://github.com/justinoboyle/cliscope/actions/runs/36281888580/job/108515178346):
+the 4 MiB semicolon fixture took 3,090.9 ms against its unchanged 3,000 ms budget;
+command chains took 2,791.9 ms. Per-token arrays, delegated array iterators, and
+per-separator invocation objects added avoidable work despite bounded memory.
+
+The lexer now holds at most one pending word and one pending operator. The parser
+resets one invocation object instead of constructing an object and `Set` at each
+separator. Input containing only unquoted whitespace and operators returns empty
+counts without tokenization. Quotes, escapes, substitutions, and words still use
+the lexer. No operator tokens are coalesced or discarded from its public stream.
+
+Five isolated subprocesses per fixture compared commit
+`5a1c0b29242cf51eadcc165b42a1ec9d4bfb8da3` with the candidate on macOS arm64,
+Node 26.9.0, with a 64 MiB V8 heap limit. Times include Node/tsx startup and
+assertions; there was no warmup. RSS is the median process peak, not heap usage.
+
+| 4 MiB fixture                  | Before    | After     | Peak RSS before / after |
+| ------------------------------ | --------- | --------- | ----------------------- |
+| `';'.repeat(4 * 1024 * 1024)`  | 704.99 ms | 71.67 ms  | 86,400 / 71,360 KiB     |
+| `'a;'.repeat(2 * 1024 * 1024)` | 689.38 ms | 566.59 ms | 89,648 / 82,624 KiB     |
+
+Run the same result-checking fixtures in each checkout:
+
+```sh
+node --max-old-space-size=64 --import tsx scripts/benchmark-memory.ts operators
+node --max-old-space-size=64 --import tsx scripts/benchmark-memory.ts 'command chains'
+```
+
+The operator fixture asserts no tools; the chain fixture asserts 2,097,152
+invocations of exactly one tool. A separate seeded differential probe compared
+100,000 inputs against the committed lexer and parser, checking every token,
+completion status, ordered extraction, and counted extraction. Inputs included
+shell syntax fragments, arbitrary strings, and operator/whitespace-only strings.
+The seeds, sample groups, and raw timing/RSS samples are retained in
+[performance-data.json](performance-data.json). Tests also cover quoted and
+escaped operator names, wrapper state reset, redirections, comments, token order,
+and EOF. All 34 relevant source tests, type/lint/format checks, and the full local
+benchmark suite passed. Local arm64 measurements do not establish that the Intel
+CI job has passed; that requires the subsequent CI run. No budget was increased.
+
 ## Reproduce the current checks
 
 From a dependency-installed checkout, run:
 
 ```sh
 npm run bench
-npm test
-npm run build
-npm run build:binary
-python3 scripts/test-terminal.py ./artifacts/cliscope --demo -i
 ```
 
 The benchmark implementation and fixed budgets live in
 [scripts/benchmark.ts](../scripts/benchmark.ts); dense-memory assertions live in
-[scripts/benchmark-memory.ts](../scripts/benchmark-memory.ts). Tests and builds
-run the same suite. Package and binary phases additionally time their executable
-startup. Use the [consumer regression procedure](../.agents/skills/cliscope-maintenance/SKILL.md#consumer-runtime-regression)
+[scripts/benchmark-memory.ts](../scripts/benchmark-memory.ts). The [contributor gate](../CONTRIBUTING.md#development) runs it during tests and
+builds. Package and binary phases additionally time executable startup. Use the [consumer regression procedure](../.agents/skills/cliscope-maintenance/SKILL.md#consumer-runtime-regression)
 to test an installed archive; a source-only pass does not verify packaging.
 
 Each run records runtime, platform, architecture, samples, medians, and budgets
@@ -230,7 +274,7 @@ changed.
 
 ## Limits
 
-The 64 MiB file limit bounds input bytes, not runtime memory. A history with many
+The [input limit](manual.md#files) bounds bytes, not runtime memory. A history with many
 distinct tools or dates requires corresponding output state. The public
 array-returning parser and ordered extraction APIs intentionally retain their
 results; the CLI aggregation path avoids these intermediate arrays. CSV and JSON
@@ -239,7 +283,7 @@ exports include all rows and therefore retain output-proportional work.
 Sanitization must examine the complete label, and changed filters must inspect
 the normalized search index. Weekday statistics must include all dated rows.
 Caches are tied to an immutable report; changing a report requires a new session.
-Property and differential tests establish the checked behavior over their
-fixtures, not a proof of arbitrary shell-program interpretation. Full-shell
-execution, alias expansion, cold-disk behavior, maximum-size hostile workloads,
-and Windows terminal interaction remain outside these measurements.
+See [verification limits](engineering.md#verification-limits) and the
+[manual](manual.md#counts) for interpretation boundaries. Cold-disk behavior,
+maximum-size hostile workloads, and Windows terminal interaction remain outside
+these measurements.
